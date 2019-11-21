@@ -22,7 +22,7 @@ This project consists of microservices that facilitate the functional areas of t
 The following procedures assumes that all of the OS-level configuration has been completed. They are:
 
 * [AWS Command Line Interface](https://aws.amazon.com/cli/)
-* Node.js 8.x
+* Node.js 10.x
 * Python 3.x
 
 The AWS WAF Security Automations solution is developed with Node.js and Python for the microservices that run in AWS Lambda. The latest version has been tested with Node.js v8.10 and Python v3.7.
