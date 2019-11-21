@@ -136,13 +136,18 @@ def update_waf_ip_set(ip_set_id, outstanding_requesters):
                     break
 
         #--------------------------------------------------------------------------------------------------------------
+        logging.getLogger().info("[update_waf_ip_set] \tRemove IPs that are considered good bots")
+        #--------------------------------------------------------------------------------------------------------------
+        unified_outstanding_requesters = dict(filter(lambda ip: is_allowed_bot(ip), unified_outstanding_requesters.items()))
+
+        #--------------------------------------------------------------------------------------------------------------
         logging.getLogger().info("[update_waf_ip_set] \tRemove IPs that are not in current outstanding requesters list")
         #--------------------------------------------------------------------------------------------------------------
         response = waf_get_ip_set(ip_set_id)
         if response != None:
             for k in response['IPSet']['IPSetDescriptors']:
                 ip_value = k['Value'].split('/')[0]
-                if ip_value not in unified_outstanding_requesters.keys() or is_allowed_bot(ip_value):
+                if ip_value not in unified_outstanding_requesters.keys():
                     ip_type = "IPV%s"%ip_address(ip_value).version
                     updates_list.append({
                         'Action': 'DELETE',
