@@ -18,6 +18,7 @@ import json
 import logging
 import datetime
 import time
+import socket
 from os import environ
 from ipaddress import ip_address
 from botocore.config import Config
@@ -53,6 +54,19 @@ LINE_FORMAT_ALB = {
     'code' : 9, # GitHub issue #44. Changed from elb_status_code to target_status_code.
     'uri': 13
 }
+
+# Host information for verification of good bots
+VALID_HOST_SUFFIXES = [
+    '.googlebot.com',
+    '.google.com',
+    '.search.msn.com',
+    '.crawl.yahoo.net',
+    '.duckduckgo.com',
+]
+# Hosts for which get_ip(get_host(ip)) != ip despite being legitimate
+NON_UNIQUE_HOSTS = [
+    'duckduckbot.duckduckgo.com',
+]
 
 waf = None
 config = {}
@@ -128,7 +142,7 @@ def update_waf_ip_set(ip_set_id, outstanding_requesters):
         if response != None:
             for k in response['IPSet']['IPSetDescriptors']:
                 ip_value = k['Value'].split('/')[0]
-                if ip_value not in unified_outstanding_requesters.keys():
+                if ip_value not in unified_outstanding_requesters.keys() or is_allowed_bot(ip_value):
                     ip_type = "IPV%s"%ip_address(ip_value).version
                     updates_list.append({
                         'Action': 'DELETE',
@@ -166,6 +180,27 @@ def update_waf_ip_set(ip_set_id, outstanding_requesters):
 
     logging.getLogger().debug('[update_waf_ip_set] End')
     return counter
+
+def is_allowed_bot(ip_address):
+    try:
+        host_info = socket.gethostbyaddr(ip_address)
+    except:
+        return False
+
+    hostname = host_info[0]
+    if not any(hostname.endswith(suffix) for suffix in VALID_HOST_SUFFIXES):
+        return False
+
+    try:
+        ip_from_host = socket.gethostbyname(hostname)
+    except:
+        return False
+
+    # Some IPs do not resolve back to unique hosts despite being legitimate
+    if hostname in NON_UNIQUE_HOSTS:
+        return True
+
+    return ip_address == ip_from_host
 
 def send_anonymous_usage_data():
     try:
@@ -787,4 +822,3 @@ def lambda_handler(event, context):
 
     logging.getLogger().debug('[lambda_handler] End')
     return result
-
