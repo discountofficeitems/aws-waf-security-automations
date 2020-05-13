@@ -13,7 +13,7 @@
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  (SO0006-CloudFront) - AWS WAF Security Automations %VERSION%: This AWS CloudFormation template helps
+  (SO0006-ALB) - AWS WAF Security Automations - ALB %VERSION%: This AWS CloudFormation template helps
   you provision the AWS WAF Security Automations stack without worrying about creating and
   configuring the underlying AWS infrastructure.
 
@@ -36,6 +36,10 @@ Parameters:
     Type: String
   AppAccessLogBucket:
     Type: String
+  EndpointScope:
+    Type: String
+  RequestThreshold:
+    Type: Number
   WafApiType:
     Type: String
   WafArnPrefix:
@@ -96,214 +100,235 @@ Conditions:
     - !Ref ActivateBadBotProtectionParam
     - 'yes'
 
-
 Resources:
   WAFWhitelistSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Properties:
       Name: !Sub '${ParentStackName} - Whitelist Set'
+      Scope: !Ref 'EndpointScope'
 
   WAFBlacklistSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Properties:
       Name: !Sub '${ParentStackName} - Blacklist Set'
+      Scope: !Ref 'EndpointScope'
 
   WAFHttpFloodSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Condition: HttpFloodProtectionLogParserActivated
     Properties:
       Name: !Sub '${ParentStackName} - HTTP Flood Set'
+      Scope: !Ref 'EndpointScope'
 
   WAFScannersProbesSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Condition: ScannersProbesProtectionActivated
     Properties:
       Name: !Sub '${ParentStackName} - Scanners & Probes Set'
+      Scope: !Ref 'EndpointScope'
 
   WAFReputationListsSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Condition: ReputationListsProtectionActivated
     Properties:
       Name: !Sub '${ParentStackName} - IP Reputation Lists Set'
+      Scope: !Ref 'EndpointScope'
 
   WAFBadBotSet:
-    Type: 'AWS::WAF::IPSet'
+    Type: 'AWS::WAFv2::IPSet'
     Condition: BadBotProtectionActivated
     Properties:
       Name: !Sub '${ParentStackName} - IP Bad Bot Set'
-
-  WAFSqlInjectionDetection:
-    Type: 'AWS::WAF::SqlInjectionMatchSet'
-    Condition: SqlInjectionProtectionActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - SQL injection Detection'
-      SqlInjectionMatchTuples:
-        - FieldToMatch:
-            Type: QUERY_STRING
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: QUERY_STRING
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: BODY
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: BODY
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: URI
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: URI
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Cookie
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Cookie
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Authorization
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Authorization
-          TextTransformation: HTML_ENTITY_DECODE
-
-  WAFXssDetection:
-    Type: 'AWS::WAF::XssMatchSet'
-    Condition: CrossSiteScriptingProtectionActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - XSS Detection Detection'
-      XssMatchTuples:
-        - FieldToMatch:
-            Type: QUERY_STRING
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: QUERY_STRING
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: BODY
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: BODY
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: URI
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: URI
-          TextTransformation: HTML_ENTITY_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Cookie
-          TextTransformation: URL_DECODE
-        - FieldToMatch:
-            Type: HEADER
-            Data: Cookie
-          TextTransformation: HTML_ENTITY_DECODE
-
-  WAFWhitelistRule:
-    Type: 'AWS::WAF::Rule'
-    Properties:
-      Name: !Sub '${ParentStackName} - Whitelist Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'WhitelistRule']]
-      Predicates:
-        - DataId: !Ref WAFWhitelistSet
-          Negated: false
-          Type: IPMatch
-
-  WAFBlacklistRule:
-    Type: 'AWS::WAF::Rule'
-    Properties:
-      Name: !Sub '${ParentStackName} - Blacklist Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'BlacklistRule']]
-      Predicates:
-        - DataId: !Ref WAFBlacklistSet
-          Negated: false
-          Type: IPMatch
-
-  WAFHttpFloodRegularRule:
-    Type: 'AWS::WAF::Rule'
-    Condition: HttpFloodProtectionLogParserActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - HTTP Flood Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'HttpFloodRule']]
-      Predicates:
-        - DataId: !Ref WAFHttpFloodSet
-          Negated: false
-          Type: IPMatch
-
-  WAFScannersProbesRule:
-    Type: 'AWS::WAF::Rule'
-    Condition: ScannersProbesProtectionActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - Scanners & Probes Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'ScannersProbesRule']]
-      Predicates:
-        - DataId: !Ref WAFScannersProbesSet
-          Negated: false
-          Type: IPMatch
-
-  WAFIPReputationListsRule:
-    Type: 'AWS::WAF::Rule'
-    Condition: ReputationListsProtectionActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - WAF IP Reputation Lists Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'IPReputationListsRule']]
-      Predicates:
-        - DataId: !Ref WAFReputationListsSet
-          Negated: false
-          Type: IPMatch
-
-  WAFBadBotRule:
-    Type: 'AWS::WAF::Rule'
-    Condition: BadBotProtectionActivated
-    Properties:
-      Name: !Sub '${ParentStackName} - Bad Bot Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'BadBotRule']]
-      Predicates:
-        - DataId: !Ref WAFBadBotSet
-          Negated: false
-          Type: IPMatch
+      Scope: !Ref 'EndpointScope'
 
   WAFSqlInjectionRule:
-    Type: 'AWS::WAF::Rule'
+    Type: 'AWS::WAFv2::RuleGroup'
     Condition: SqlInjectionProtectionActivated
     Properties:
       Name: !Sub '${ParentStackName} - SQL Injection Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'SqlInjectionRule']]
-      Predicates:
-        - DataId: !Ref WAFSqlInjectionDetection
-          Negated: false
-          Type: SqlInjectionMatch
+      Scope: !Ref 'EndpointScope'
+      Capacity: 500
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'SqlInjectionRule']]
+      Rules:
+        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Query String'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {QueryString: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Body'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {Body: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - SQL Injection Rule - URI'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {UriPart: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Cookies'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {SingleHeader: {Name: 'Cookie'}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
 
   WAFXssRule:
-    Type: 'AWS::WAF::Rule'
+    Type: 'AWS::WAFv2::RuleGroup'
     Condition: CrossSiteScriptingProtectionActivated
     Properties:
       Name: !Sub '${ParentStackName} - XSS Rule'
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'XssRule']]
-      Predicates:
-        - DataId: !Ref WAFXssDetection
-          Negated: false
-          Type: XssMatch
+      Scope: !Ref 'EndpointScope'
+      Capacity: 500
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'XssRule']]
+      Rules:
+        - Name: !Sub '${ParentStackName} - XSS Rule - Query String'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {QueryString: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - XSS Rule - Body'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {Body: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - XSS Rule - URI'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {UriPart: {}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
+        - Name: !Sub '${ParentStackName} - XSS Rule - Cookies'
+          Priority: 10
+          Statement:
+            XssMatchStatement:
+              FieldToMatch: {SingleHeader: {Name: 'Cookie'}}
+              TextTransformation:
+                - Priority: 0
+                  Type: URL_DECODE
+                - Priority: 1
+                  Type: HTML_ENTITY_DECODE
 
   WAFWebACL:
-    Type: 'AWS::WAF::WebACL'
+    Type: 'AWS::WAFv2::WebACL'
     Properties:
       Name: !Ref 'ParentStackName'
+      Scope: !Ref 'EndpointScope'
       DefaultAction:
-        Type: ALLOW
-      MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'MaliciousRequesters']]
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'MaliciousRequesters']]
       Rules:
         - Action:
-            Type: ALLOW
+            Allow: {}
+          Name: !Sub '${ParentStackName} - Whitelist Rule'
           Priority: 10
-          RuleId: !Ref WAFWhitelistRule
+          Statement:
+            IPSetReferenceStatement: !Ref WAFWhitelistSet
+        - Action:
+            Block: {}
+          Name: !Sub '${ParentStackName} - Blacklist Rule'
+          Priority: 20
+          Statement:
+            IPSetReferenceStatement: !Ref WAFBlacklistSet
+        - !If
+            - SqlInjectionProtectionActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - SQL Injection Detection'
+              Priority: 30
+              Statement:
+                RuleGroupReferenceStatement:
+                  Arn: !Ref WAFSqlInjectionRule
+            - !Ref 'AWS::NoValue'
+        - !If
+            - CrossSiteScriptingProtectionActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - XSS Detection'
+              Priority: 40
+              Statement:
+                RuleGroupReferenceStatement:
+                  Arn: !Ref WAFXssRule
+            - !Ref 'AWS::NoValue'
+        - !If
+            - HttpFloodProtectionLogParserActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - HTTP Flood Rate Rule'
+              Priority: 50
+              Statement:
+                RateBasedStatement:
+                  AggregateKeyType: 'IP'
+                  Limit: !Ref RequestThreshold
+            - !Ref 'AWS::NoValue'
+        - !If
+            - ScannersProbesProtectionActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - Scanners & Probes Set'
+              Priority: 60
+              Statement:
+                IPSetReferenceStatement: !Ref WAFScannersProbesSet
+            - !Ref 'AWS::NoValue'
+        - !If
+            - ReputationListsProtectionActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - IP Reputation Lists Set'
+              Priority: 70
+              Statement:
+                IPSetReferenceStatement: !Ref WAFReputationListsSet
+            - !Ref 'AWS::NoValue'
+        - !If
+            - BadBotProtectionActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName} - IP Bad Bot Set'
+              Priority: 90
+              Statement:
+                IPSetReferenceStatement: !Ref WAFBadBotSet
+            - !Ref 'AWS::NoValue'
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -737,10 +762,10 @@ Resources:
                 - Effect: Allow
                   Action: 'iam:CreateServiceLinkedRole'
                   Resource:
-                    - 'arn:aws:iam::*:role/aws-service-role/waf.amazonaws.com/AWSServiceRoleForWAFLogging'
+                    - 'arn:aws:iam::*:role/aws-service-role/waf-regional.amazonaws.com/AWSServiceRoleForWAFRegionalLogging'
                   Condition:
                     StringLike:
-                      iam:AWSServiceName: 'waf.amazonaws.com'
+                      iam:AWSServiceName: 'waf-regional.amazonaws.com'
           - !Ref 'AWS::NoValue'
         - PolicyName: CloudFormationAccess
           PolicyDocument:

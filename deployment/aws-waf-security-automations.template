@@ -244,10 +244,6 @@ Conditions:
     - !Ref EndpointType
     - 'ALB'
 
-  CloudFrontEndpoint: !Equals
-    - !Ref EndpointType
-    - 'CloudFront'
-
 Mappings:
     SourceCode:
         General:
@@ -255,6 +251,12 @@ Mappings:
             SourceBucket: '%DIST_OUTPUT_BUCKET%'
             KeyPrefix: '%SOLUTION_NAME%/%VERSION%'
     Solution:
+        EndpointScope:
+            ALB: 'REGIONAL'
+            CloudFront: 'CLOUDFRONT'
+        LogType:
+            ALB: 'alb'
+            CloudFront: 'cloudfront'
         Data:
             SendAnonymousUsageData: 'Yes'
             LogLevel: 'INFO'
@@ -325,7 +327,7 @@ Resources:
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'helper.zip']]
       Environment:
         Variables:
-          API_TYPE: !If [AlbEndpoint, 'waf-regional', 'waf']
+          API_TYPE: 'wafv2'
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
       Runtime: python3.8
       MemorySize: 128
@@ -416,17 +418,17 @@ Resources:
         GlueDatabaseName: !If [AthenaLogParser, !GetAtt CreateGlueDatabaseName.DatabaseName, '']
         DeliveryStreamName: !If [HttpFloodProtectionLogParserActivated, !GetAtt CreateDeliveryStreamName.DeliveryStreamName, '']
 
-  AlbStack:
+  WafStack:
     Type: 'AWS::CloudFormation::Stack'
-    Condition: AlbEndpoint
     DependsOn: CheckRequirements
     Properties:
       TemplateURL: !Sub
-        - 'https://s3.amazonaws.com/${S3Bucket}/${KeyPrefix}/aws-waf-security-automations-alb.template'
+        - 'https://s3.amazonaws.com/${S3Bucket}/${KeyPrefix}/aws-waf-security-automations-waf.template'
         -
           S3Bucket: !FindInMap ["SourceCode", "General", "TemplateBucket"]
           KeyPrefix: !FindInMap ["SourceCode", "General", "KeyPrefix"]
       Parameters:
+        EndpointScope: !FindInMap ["Solution", "EndpointScope", !Ref EndpointType]
         ActivateSqlInjectionProtectionParam: !Ref ActivateSqlInjectionProtectionParam
         ActivateCrossSiteScriptingProtectionParam: !Ref ActivateCrossSiteScriptingProtectionParam
         ActivateHttpFloodProtectionParam: !Ref ActivateHttpFloodProtectionParam
@@ -434,38 +436,13 @@ Resources:
         ActivateReputationListsProtectionParam: !Ref ActivateReputationListsProtectionParam
         ActivateBadBotProtectionParam: !Ref ActivateBadBotProtectionParam
         AppAccessLogBucket: !Ref AppAccessLogBucket
-        WafApiType: 'waf-regional'
-        WafArnPrefix: !Sub 'arn:aws:waf-regional:${AWS::Region}:'
+        RequestThreshold: !Ref RequestThreshold
+        WafApiType: 'wafv2'
+        WafArnPrefix: !Sub 'arn:aws:wafv2:${AWS::Region}:'
         ParentStackName: !Ref 'AWS::StackName'
         WafLogBucket: !If [HttpFloodProtectionLogParserActivated, !Ref WafLogBucket, '']
         GlueAccessLogsDatabase: !If [AthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.GlueAccessLogsDatabase, '']
         GlueAppAccessLogsTable: !If [ScannersProbesAthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.ALBGlueAppAccessLogsTable, '']
-        GlueWafAccessLogsTable: !If [HttpFloodAthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.GlueWafAccessLogsTable, '']
-
-  CloudFrontStack:
-    Type: 'AWS::CloudFormation::Stack'
-    Condition: CloudFrontEndpoint
-    DependsOn: CheckRequirements
-    Properties:
-      TemplateURL: !Sub
-        - 'https://s3.amazonaws.com/${S3Bucket}/${KeyPrefix}/aws-waf-security-automations-cloudfront.template'
-        -
-          S3Bucket: !FindInMap ["SourceCode", "General", "TemplateBucket"]
-          KeyPrefix: !FindInMap ["SourceCode", "General", "KeyPrefix"]
-      Parameters:
-        ActivateSqlInjectionProtectionParam: !Ref ActivateSqlInjectionProtectionParam
-        ActivateCrossSiteScriptingProtectionParam: !Ref ActivateCrossSiteScriptingProtectionParam
-        ActivateHttpFloodProtectionParam: !Ref ActivateHttpFloodProtectionParam
-        ActivateScannersProbesProtectionParam: !Ref ActivateScannersProbesProtectionParam
-        ActivateReputationListsProtectionParam: !Ref ActivateReputationListsProtectionParam
-        ActivateBadBotProtectionParam: !Ref ActivateBadBotProtectionParam
-        AppAccessLogBucket: !Ref AppAccessLogBucket
-        WafApiType: 'waf'
-        WafArnPrefix: 'arn:aws:waf::'
-        ParentStackName: !Ref 'AWS::StackName'
-        WafLogBucket: !If [HttpFloodProtectionLogParserActivated, !Ref WafLogBucket, '']
-        GlueAccessLogsDatabase: !If [AthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.GlueAccessLogsDatabase, '']
-        GlueAppAccessLogsTable: !If [ScannersProbesAthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.CloudFrontGlueAppAccessLogsTable, '']
         GlueWafAccessLogsTable: !If [HttpFloodAthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.GlueWafAccessLogsTable, '']
 
   LogParser:
@@ -477,7 +454,7 @@ Resources:
             It then blocks those IP addresses for a customer-defined period of time.
             Parameters: ${RequestThreshold}, ${ErrorThreshold} and ${WAFBlockPeriod}.
       Handler: 'log-parser.lambda_handler'
-      Role: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.LambdaRoleLogParserArn, !GetAtt CloudFrontStack.Outputs.LambdaRoleLogParserArn]
+      Role: !GetAtt WafStack.Outputs.LambdaRoleLogParserArn
       Code:
         S3Bucket: !Join ['-', [!FindInMap ["SourceCode", "General", "SourceBucket"], !Ref 'AWS::Region']]
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'log-parser.zip']]
@@ -490,12 +467,12 @@ Resources:
           LIMIT_IP_ADDRESS_RANGES_PER_IP_MATCH_CONDITION: '10000'
           MAX_AGE_TO_UPDATE: '30'
           REGION: !Ref 'AWS::Region'
-          LOG_TYPE: !If [AlbEndpoint, 'alb', 'cloudfront']
+          LOG_TYPE: !FindInMap ["Solution", "LogType", !Ref EndpointType]
           METRIC_NAME_PREFIX: !Join ['', !Split ['-', !Ref 'AWS::StackName']]
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
           STACK_NAME: !Ref 'AWS::StackName'
-          IP_SET_ID_HTTP_FLOOD: !If [HttpFloodProtectionLogParserActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFHttpFloodSet, !GetAtt CloudFrontStack.Outputs.WAFHttpFloodSet], !Ref 'AWS::NoValue']
-          IP_SET_ID_SCANNERS_PROBES: !If [ScannersProbesProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFScannersProbesSet, !GetAtt CloudFrontStack.Outputs.WAFScannersProbesSet], !Ref 'AWS::NoValue']
+          IP_SET_ID_HTTP_FLOOD: !If [HttpFloodProtectionLogParserActivated, !GetAtt WafStack.Outputs.WAFHttpFloodSet, !Ref 'AWS::NoValue']
+          IP_SET_ID_SCANNERS_PROBES: !If [ScannersProbesProtectionActivated, !GetAtt WafStack.Outputs.WAFScannersProbesSet, !Ref 'AWS::NoValue']
       Runtime: python3.8
       MemorySize: 512
       Timeout: 300
@@ -570,7 +547,7 @@ Resources:
         block. These lists include the Spamhaus Dont Route Or Peer (DROP) and Extended Drop (EDROP)
         lists, the Proofpoint Emerging Threats IP list, and the Tor exit node list.
       Handler: 'reputation-lists-parser.handler'
-      Role: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.LambdaRoleReputationListsParserArn, !GetAtt CloudFrontStack.Outputs.LambdaRoleReputationListsParserArn]
+      Role: !GetAtt WafStack.Outputs.LambdaRoleReputationListsParserArn
       Code:
         S3Bucket: !Join ['-', [!FindInMap ["SourceCode", "General", "SourceBucket"], !Ref 'AWS::Region']]
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'reputation-lists-parser.zip']]
@@ -607,8 +584,8 @@ Resources:
                 "ipSetIds": ["${WAFReputationListsSet}"]
               }
             -
-              ApiType: !If [AlbEndpoint, 'waf-regional', 'waf']
-              WAFReputationListsSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFReputationListsSet, !GetAtt CloudFrontStack.Outputs.WAFReputationListsSet]
+              ApiType: 'wafv2'
+              WAFReputationListsSet: !GetAtt WafStack.Outputs.WAFReputationListsSet
 
   LambdaInvokePermissionReputationListsParser:
     Type: 'AWS::Lambda::Permission'
@@ -627,17 +604,17 @@ Resources:
         This lambda function will intercepts and inspects trap endpoint requests to extract its IP
         address, and then add it to an AWS WAF block list.
       Handler: 'access-handler.lambda_handler'
-      Role: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.LambdaRoleBadBotArn, !GetAtt CloudFrontStack.Outputs.LambdaRoleBadBotArn]
+      Role: !GetAtt WafStack.Outputs.LambdaRoleBadBotArn
       Code:
         S3Bucket: !Join ['-', [!FindInMap ["SourceCode", "General", "SourceBucket"], !Ref 'AWS::Region']]
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'access-handler.zip']]
       Environment:
         Variables:
-          IP_SET_ID_BAD_BOT: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFBadBotSet, !GetAtt CloudFrontStack.Outputs.WAFBadBotSet]
+          IP_SET_ID_BAD_BOT: !GetAtt WafStack.Outputs.WAFBadBotSet
           SEND_ANONYMOUS_USAGE_DATA: !FindInMap ["Solution", "Data", "SendAnonymousUsageData"]
           UUID: !GetAtt CreateUniqueID.UUID
           REGION: !Ref 'AWS::Region'
-          LOG_TYPE: !If [AlbEndpoint, 'alb', 'cloudfront']
+          LOG_TYPE: !FindInMap ["Solution", "LogType", !Ref EndpointType]
           METRIC_NAME_PREFIX: !Join ['', !Split ['-', !Ref 'AWS::StackName']]
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
       Runtime: python3.8
@@ -733,13 +710,13 @@ Resources:
         This lambda function configures the Web ACL rules based on the features enabled in the
         CloudFormation template.
       Handler: 'custom-resource.lambda_handler'
-      Role: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.LambdaRoleCustomResourceArn, !GetAtt CloudFrontStack.Outputs.LambdaRoleCustomResourceArn]
+      Role: !GetAtt WafStack.Outputs.LambdaRoleCustomResourceArn
       Code:
         S3Bucket: !Join ['-', [!FindInMap ["SourceCode", "General", "SourceBucket"], !Ref 'AWS::Region']]
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'custom-resource.zip']]
       Environment:
         Variables:
-          API_TYPE: !If [AlbEndpoint, 'waf-regional', 'waf']
+          API_TYPE: 'wafv2'
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
       Runtime: python3.8
       MemorySize: 128
@@ -750,7 +727,7 @@ Resources:
     Condition: HttpFloodProtectionLogParserActivated
     Properties:
       ServiceToken: !GetAtt CustomResource.Arn
-      WAFWebACLArn: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWebACLArn, !GetAtt CloudFrontStack.Outputs.WAFWebACLArn]
+      WAFWebACLArn: !GetAtt WafStack.Outputs.WAFWebACLArn
       DeliveryStreamArn: !GetAtt FirehoseAthenaStack.Outputs.FirehoseWAFLogsDeliveryStreamArn
 
   ConfigureAppAccessLogBucket:
@@ -793,7 +770,7 @@ Resources:
       AppAccessLogBucket: !Ref AppAccessLogBucket
       ErrorThreshold: !Ref ErrorThreshold
       WAFBlockPeriod: !Ref WAFBlockPeriod
-      WAFScannersProbesSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFScannersProbesSet, !GetAtt CloudFrontStack.Outputs.WAFScannersProbesSet]
+      WAFScannersProbesSet: !GetAtt WafStack.Outputs.WAFScannersProbesSet
 
   GenerateWafLogParserConfFile:
     Type: 'Custom::GenerateWafLogParserConfFile'
@@ -804,7 +781,7 @@ Resources:
       WafAccessLogBucket: !Ref WafLogBucket
       RequestThreshold: !Ref RequestThreshold
       WAFBlockPeriod: !Ref WAFBlockPeriod
-      WAFHttpFloodSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFHttpFloodSet, !GetAtt CloudFrontStack.Outputs.WAFHttpFloodSet]
+      WAFHttpFloodSet: !GetAtt WafStack.Outputs.WAFHttpFloodSet
 
   ConfigureWebAcl:
     Type: 'Custom::ConfigureWebAcl'
@@ -826,17 +803,17 @@ Resources:
       ProtectionActivatedReputationLists: !If [ReputationListsProtectionActivated, 'yes', 'no']
       ProtectionActivatedBadBot: !If [BadBotProtectionActivated, 'yes', 'no']
       # AWS WAF Web ACL
-      WAFWebACL: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWebACL, !GetAtt CloudFrontStack.Outputs.WAFWebACL]
+      WAFWebACL: !GetAtt WafStack.Outputs.WAFWebACL
       # AWS WAF Rules
-      WAFWhitelistRule: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWhitelistRule, !GetAtt CloudFrontStack.Outputs.WAFWhitelistRule]
-      WAFBlacklistRule: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFBlacklistRule, !GetAtt CloudFrontStack.Outputs.WAFBlacklistRule]
-      WAFSqlInjectionRule: !If [SqlInjectionProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFSqlInjectionRule, !GetAtt CloudFrontStack.Outputs.WAFSqlInjectionRule], !Ref 'AWS::NoValue']
-      WAFXssRule: !If [CrossSiteScriptingProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFXssRule, !GetAtt CloudFrontStack.Outputs.WAFXssRule], !Ref 'AWS::NoValue']
+      WAFWhitelistRule: !GetAtt WafStack.Outputs.WAFWhitelistRule
+      WAFBlacklistRule: !GetAtt WafStack.Outputs.WAFBlacklistRule
+      WAFSqlInjectionRule: !If [SqlInjectionProtectionActivated, !GetAtt WafStack.Outputs.WAFSqlInjectionRule, !Ref 'AWS::NoValue']
+      WAFXssRule: !If [CrossSiteScriptingProtectionActivated, !GetAtt WafStack.Outputs.WAFXssRule, !Ref 'AWS::NoValue']
       WAFHttpFloodRateBasedRule: !If [HttpFloodProtectionRateBasedRuleActivated, !GetAtt ConfigureRateBasedRule.RateBasedRuleId, !Ref 'AWS::NoValue']
-      WAFHttpFloodRegularRule: !If [HttpFloodProtectionLogParserActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFHttpFloodRegularRule, !GetAtt CloudFrontStack.Outputs.WAFHttpFloodRegularRule], !Ref 'AWS::NoValue']
-      WAFScannersProbesRule: !If [ScannersProbesProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFScannersProbesRule, !GetAtt CloudFrontStack.Outputs.WAFScannersProbesRule], !Ref 'AWS::NoValue']
-      WAFIPReputationListsRule: !If [ReputationListsProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFIPReputationListsRule, !GetAtt CloudFrontStack.Outputs.WAFIPReputationListsRule], !Ref 'AWS::NoValue']
-      WAFBadBotRule: !If [BadBotProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFBadBotRule, !GetAtt CloudFrontStack.Outputs.WAFBadBotRule], !Ref 'AWS::NoValue']
+      WAFHttpFloodRegularRule: !If [HttpFloodProtectionLogParserActivated, !GetAtt WafStack.Outputs.WAFHttpFloodRegularRule, !Ref 'AWS::NoValue']
+      WAFScannersProbesRule: !If [ScannersProbesProtectionActivated, !GetAtt WafStack.Outputs.WAFScannersProbesRule, !Ref 'AWS::NoValue']
+      WAFIPReputationListsRule: !If [ReputationListsProtectionActivated, !GetAtt WafStack.Outputs.WAFIPReputationListsRule, !Ref 'AWS::NoValue']
+      WAFBadBotRule: !If [BadBotProtectionActivated, !GetAtt WafStack.Outputs.WAFBadBotRule, !Ref 'AWS::NoValue']
       # AWS WAF Rules Actions
       ActionWAFWhitelistRule: !FindInMap ["Solution", "Action", "WAFWhitelistRule"]
       ActionWAFBlacklistRule: !FindInMap ["Solution", "Action", "WAFBlacklistRule"]
@@ -848,12 +825,12 @@ Resources:
       ActionWAFIPReputationListsRule: !FindInMap ["Solution", "Action", "WAFIPReputationListsRule"]
       ActionWAFBadBotRule: !FindInMap ["Solution", "Action", "WAFBadBotRule"]
       # AWS WAF IP Sets
-      WAFWhitelistSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWhitelistSet, !GetAtt CloudFrontStack.Outputs.WAFWhitelistSet]
-      WAFBlacklistSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFBlacklistSet, !GetAtt CloudFrontStack.Outputs.WAFBlacklistSet]
-      WAFHttpFloodSet: !If [HttpFloodProtectionLogParserActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFHttpFloodSet, !GetAtt CloudFrontStack.Outputs.WAFHttpFloodSet], !Ref 'AWS::NoValue']
-      WAFScannersProbesSet: !If [ScannersProbesProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFScannersProbesSet, !GetAtt CloudFrontStack.Outputs.WAFScannersProbesSet], !Ref 'AWS::NoValue']
-      WAFReputationListsSet: !If [ReputationListsProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFReputationListsSet, !GetAtt CloudFrontStack.Outputs.WAFReputationListsSet], !Ref 'AWS::NoValue']
-      WAFBadBotSet: !If [BadBotProtectionActivated, !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFBadBotSet, !GetAtt CloudFrontStack.Outputs.WAFBadBotSet], !Ref 'AWS::NoValue']
+      WAFWhitelistSet: !GetAtt WafStack.Outputs.WAFWhitelistSet
+      WAFBlacklistSet: !GetAtt WafStack.Outputs.WAFBlacklistSet
+      WAFHttpFloodSet: !If [HttpFloodProtectionLogParserActivated, !GetAtt WafStack.Outputs.WAFHttpFloodSet, !Ref 'AWS::NoValue']
+      WAFScannersProbesSet: !If [ScannersProbesProtectionActivated, !GetAtt WafStack.Outputs.WAFScannersProbesSet, !Ref 'AWS::NoValue']
+      WAFReputationListsSet: !If [ReputationListsProtectionActivated, !GetAtt WafStack.Outputs.WAFReputationListsSet, !Ref 'AWS::NoValue']
+      WAFBadBotSet: !If [BadBotProtectionActivated, !GetAtt WafStack.Outputs.WAFBadBotSet, !Ref 'AWS::NoValue']
       # Extra Info
       UUID: !GetAtt CreateUniqueID.UUID
       Region: !Ref 'AWS::Region'
@@ -869,7 +846,7 @@ Resources:
       ServiceToken: !GetAtt CustomResource.Arn
       Region: !Ref 'AWS::Region'
       ReputationListsParser: !GetAtt ReputationListsParser.Arn
-      WAFReputationListsSet: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFReputationListsSet, !GetAtt CloudFrontStack.Outputs.WAFReputationListsSet]
+      WAFReputationListsSet: !GetAtt WafStack.Outputs.WAFReputationListsSet
 
   MonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -899,7 +876,7 @@ Resources:
                 }]
               }
             -
-              WAFWebACLMetricName: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWebACLMetricName, !GetAtt CloudFrontStack.Outputs.WAFWebACLMetricName]
+              WAFWebACLMetricName: !GetAtt WafStack.Outputs.WAFWebACLMetricName
               RegionMetric: !If [AlbEndpoint, !Sub ', "Region", "${AWS::Region}"', '']
               RegionProperties: !If [AlbEndpoint, !Sub '${AWS::Region}', 'us-east-1']
 
@@ -911,7 +888,7 @@ Outputs:
 
   WAFWebACL:
     Description: AWS WAF WebACL ID
-    Value: !If [AlbEndpoint, !GetAtt AlbStack.Outputs.WAFWebACL, !GetAtt CloudFrontStack.Outputs.WAFWebACL]
+    Value: !GetAtt WafStack.Outputs.WAFWebACL
 
   WafLogBucket:
     Value: !Ref WafLogBucket
