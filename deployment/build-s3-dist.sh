@@ -64,16 +64,16 @@ echo "--------------------------------------------------------------------------
 echo "[Packing] Templates"
 echo "------------------------------------------------------------------------------"
 
-SUB1="s/%TEMPLATE_OUTPUT_BUCKET%/$1/g"
-SUB2="s/%DIST_OUTPUT_BUCKET%/$2/g"
-SUB3="s/%SOLUTION_NAME%/$3/g"
-SUB4="s/%VERSION%/$4/g"
+SUB1="s,%TEMPLATE_OUTPUT_BUCKET%,$1,g"
+SUB2="s,%DIST_OUTPUT_BUCKET%,$2,g"
+SUB3="s,%SOLUTION_NAME%,$3,g"
+SUB4="s,%VERSION%,$4,g"
 
 for FULLNAME in ./*.template
 do
   TEMPLATE=`basename $FULLNAME`
   echo "Preparing $TEMPLATE"
-  sed -e $SUB1 -e $SUB2 -e $SUB3 -e $SUB4 $template_dir/$TEMPLATE > $template_dist_dir/$TEMPLATE
+  perl -p -e "$SUB1;$SUB2;$SUB3;$SUB4" < $template_dir/$TEMPLATE > $template_dist_dir/$TEMPLATE
 done
 
 echo "------------------------------------------------------------------------------"
