@@ -783,62 +783,6 @@ Resources:
       WAFBlockPeriod: !Ref WAFBlockPeriod
       WAFHttpFloodSet: !GetAtt WafStack.Outputs.WAFHttpFloodSet
 
-  ConfigureWebAcl:
-    Type: 'Custom::ConfigureWebAcl'
-    Properties:
-      ServiceToken: !GetAtt CustomResource.Arn
-      # Stack input params
-      ActivateSqlInjectionProtectionParam: !Ref ActivateSqlInjectionProtectionParam
-      ActivateCrossSiteScriptingProtectionParam: !Ref ActivateCrossSiteScriptingProtectionParam
-      ActivateHttpFloodProtectionParam: !Ref ActivateHttpFloodProtectionParam
-      ActivateScannersProbesProtectionParam: !Ref ActivateScannersProbesProtectionParam
-      ActivateReputationListsProtectionParam: !Ref ActivateReputationListsProtectionParam
-      ActivateBadBotProtectionParam: !Ref ActivateBadBotProtectionParam
-      # Protection Status
-      ProtectionActivatedSqlInjection: !If [SqlInjectionProtectionActivated, 'yes', 'no']
-      ProtectionActivatedCrossSiteScripting: !If [CrossSiteScriptingProtectionActivated, 'yes', 'no']
-      ProtectionActivatedHttpFloodRateBased: !If [HttpFloodProtectionRateBasedRuleActivated, 'yes', 'no']
-      ProtectionActivatedHttpFloodRegular: !If [HttpFloodProtectionLogParserActivated, 'yes', 'no']
-      ProtectionActivatedScannersProbes: !If [ScannersProbesProtectionActivated, 'yes', 'no']
-      ProtectionActivatedReputationLists: !If [ReputationListsProtectionActivated, 'yes', 'no']
-      ProtectionActivatedBadBot: !If [BadBotProtectionActivated, 'yes', 'no']
-      # AWS WAF Web ACL
-      WAFWebACL: !GetAtt WafStack.Outputs.WAFWebACL
-      # AWS WAF Rules
-      WAFWhitelistRule: !GetAtt WafStack.Outputs.WAFWhitelistRule
-      WAFBlacklistRule: !GetAtt WafStack.Outputs.WAFBlacklistRule
-      WAFSqlInjectionRule: !If [SqlInjectionProtectionActivated, !GetAtt WafStack.Outputs.WAFSqlInjectionRule, !Ref 'AWS::NoValue']
-      WAFXssRule: !If [CrossSiteScriptingProtectionActivated, !GetAtt WafStack.Outputs.WAFXssRule, !Ref 'AWS::NoValue']
-      WAFHttpFloodRateBasedRule: !If [HttpFloodProtectionRateBasedRuleActivated, !GetAtt ConfigureRateBasedRule.RateBasedRuleId, !Ref 'AWS::NoValue']
-      WAFHttpFloodRegularRule: !If [HttpFloodProtectionLogParserActivated, !GetAtt WafStack.Outputs.WAFHttpFloodRegularRule, !Ref 'AWS::NoValue']
-      WAFScannersProbesRule: !If [ScannersProbesProtectionActivated, !GetAtt WafStack.Outputs.WAFScannersProbesRule, !Ref 'AWS::NoValue']
-      WAFIPReputationListsRule: !If [ReputationListsProtectionActivated, !GetAtt WafStack.Outputs.WAFIPReputationListsRule, !Ref 'AWS::NoValue']
-      WAFBadBotRule: !If [BadBotProtectionActivated, !GetAtt WafStack.Outputs.WAFBadBotRule, !Ref 'AWS::NoValue']
-      # AWS WAF Rules Actions
-      ActionWAFWhitelistRule: !FindInMap ["Solution", "Action", "WAFWhitelistRule"]
-      ActionWAFBlacklistRule: !FindInMap ["Solution", "Action", "WAFBlacklistRule"]
-      ActionWAFSqlInjectionRule: !FindInMap ["Solution", "Action", "WAFSqlInjectionRule"]
-      ActionWAFXssRule: !FindInMap ["Solution", "Action", "WAFXssRule"]
-      ActionWAFHttpFloodRateBasedRule: !FindInMap ["Solution", "Action", "WAFHttpFloodRateBasedRule"]
-      ActionWAFHttpFloodRegularRule: !FindInMap ["Solution", "Action", "WAFHttpFloodRegularRule"]
-      ActionWAFScannersProbesRule: !FindInMap ["Solution", "Action", "WAFScannersProbesRule"]
-      ActionWAFIPReputationListsRule: !FindInMap ["Solution", "Action", "WAFIPReputationListsRule"]
-      ActionWAFBadBotRule: !FindInMap ["Solution", "Action", "WAFBadBotRule"]
-      # AWS WAF IP Sets
-      WAFWhitelistSet: !GetAtt WafStack.Outputs.WAFWhitelistSet
-      WAFBlacklistSet: !GetAtt WafStack.Outputs.WAFBlacklistSet
-      WAFHttpFloodSet: !If [HttpFloodProtectionLogParserActivated, !GetAtt WafStack.Outputs.WAFHttpFloodSet, !Ref 'AWS::NoValue']
-      WAFScannersProbesSet: !If [ScannersProbesProtectionActivated, !GetAtt WafStack.Outputs.WAFScannersProbesSet, !Ref 'AWS::NoValue']
-      WAFReputationListsSet: !If [ReputationListsProtectionActivated, !GetAtt WafStack.Outputs.WAFReputationListsSet, !Ref 'AWS::NoValue']
-      WAFBadBotSet: !If [BadBotProtectionActivated, !GetAtt WafStack.Outputs.WAFBadBotSet, !Ref 'AWS::NoValue']
-      # Extra Info
-      UUID: !GetAtt CreateUniqueID.UUID
-      Region: !Ref 'AWS::Region'
-      RequestThreshold: !Ref RequestThreshold
-      ErrorThreshold: !Ref ErrorThreshold
-      WAFBlockPeriod: !Ref WAFBlockPeriod
-      SendAnonymousUsageData: !FindInMap ["Solution", "Data", "SendAnonymousUsageData"]
-
   PopulateReputationList:
     Type: 'Custom::PopulateReputationList'
     Condition: ReputationListsProtectionActivated
