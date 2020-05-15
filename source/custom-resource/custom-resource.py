@@ -539,21 +539,6 @@ def lambda_handler(event, context):
                 remove_s3_bucket_lambda_event(event['ResourceProperties']["WafLogBucket"],
                     lambda_log_parser_function)
 
-        elif event['ResourceType'] == "Custom::ConfigureRateBasedRule":
-            if 'CREATE' in request_type:
-                rbr_id = create_rate_based_rule(event['ResourceProperties']['StackName'], event['ResourceProperties']['RequestThreshold'], event['ResourceProperties']['MetricNamePrefix'])
-                if (rbr_id != ""):
-                    resourceId = rbr_id
-                    responseData['RateBasedRuleId'] = rbr_id
-
-            elif 'UPDATE' in request_type:
-                responseData['RateBasedRuleId'] = event['PhysicalResourceId']
-                if (event['OldResourceProperties']['RequestThreshold'] != event['ResourceProperties']['RequestThreshold']):
-                    update_rate_based_rule(event['PhysicalResourceId'], event['ResourceProperties']['RequestThreshold'])
-
-            elif 'DELETE' in request_type:
-                delete_rate_based_rule(event['PhysicalResourceId'])
-
         elif event['ResourceType'] == "Custom::PopulateReputationList":
             if 'CREATE' in request_type or 'UPDATE' in request_type:
                 populate_reputation_list(event['ResourceProperties']['Region'],

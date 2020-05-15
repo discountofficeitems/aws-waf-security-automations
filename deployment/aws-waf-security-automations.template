@@ -229,7 +229,7 @@ Conditions:
     - Condition: ScannersProbesProtectionActivated
 
   CreateFirehoseAthenaStack: !Or
-    - Condition: HttpFloodProtectionLogParserActivated
+    - Condition: HttpFloodAthenaLogParser
     - Condition: AthenaLogParser
 
   ReputationListsProtectionActivated: !Equals
@@ -260,16 +260,6 @@ Mappings:
         Data:
             SendAnonymousUsageData: 'Yes'
             LogLevel: 'INFO'
-        Action:
-            WAFWhitelistRule: 'ALLOW'
-            WAFBlacklistRule: 'BLOCK'
-            WAFSqlInjectionRule: 'BLOCK'
-            WAFXssRule: 'BLOCK'
-            WAFHttpFloodRateBasedRule: 'BLOCK'
-            WAFHttpFloodRegularRule: 'BLOCK'
-            WAFScannersProbesRule: 'BLOCK'
-            WAFIPReputationListsRule: 'BLOCK'
-            WAFBadBotRule: 'BLOCK'
 
 Resources:
   LambdaRoleHelper:
@@ -722,7 +712,7 @@ Resources:
 
   ConfigureAWSWAFLogs:
     Type: 'Custom::ConfigureAWSWAFLogs'
-    Condition: HttpFloodProtectionLogParserActivated
+    Condition: HttpFloodAthenaLogParser
     Properties:
       ServiceToken: !GetAtt CustomResource.Arn
       WAFWebACLArn: !GetAtt WafStack.Outputs.WAFWebACLArn
@@ -748,15 +738,6 @@ Resources:
       LogParser: !If [LogParser, !GetAtt LogParser.Arn, !Ref 'AWS::NoValue']
       HttpFloodLambdaLogParser: !If [HttpFloodLambdaLogParser, 'yes', 'no']
       HttpFloodAthenaLogParser: !If [HttpFloodAthenaLogParser, 'yes', 'no']
-
-  ConfigureRateBasedRule:
-    Type: 'Custom::ConfigureRateBasedRule'
-    Condition: HttpFloodProtectionRateBasedRuleActivated
-    Properties:
-      ServiceToken: !GetAtt CustomResource.Arn
-      StackName: !Ref 'AWS::StackName'
-      RequestThreshold: !Ref RequestThreshold
-      MetricNamePrefix: !Join ['', !Split ['-', !Ref 'AWS::StackName']]
 
   GenerateAppLogParserConfFile:
     Type: 'Custom::GenerateAppLogParserConfFile'

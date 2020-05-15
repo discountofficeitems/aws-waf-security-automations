@@ -60,6 +60,10 @@ Conditions:
     - !Ref ActivateCrossSiteScriptingProtectionParam
     - 'yes'
 
+  HttpFloodProtectionRateBasedRuleActivated: !Equals
+    - !Ref ActivateHttpFloodProtectionParam
+    - 'yes - AWS WAF rate based rule'
+
   HttpFloodLambdaLogParser: !Equals
     - !Ref ActivateHttpFloodProtectionParam
     - 'yes - AWS Lambda log parser'
@@ -100,48 +104,60 @@ Resources:
   WAFWhitelistSet:
     Type: 'AWS::WAFv2::IPSet'
     Properties:
-      Name: !Sub '${ParentStackName} - Whitelist Set'
+      Name: !Sub '${ParentStackName}-WhitelistSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFBlacklistSet:
     Type: 'AWS::WAFv2::IPSet'
     Properties:
-      Name: !Sub '${ParentStackName} - Blacklist Set'
+      Name: !Sub '${ParentStackName}-BlacklistSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFHttpFloodSet:
     Type: 'AWS::WAFv2::IPSet'
     Condition: HttpFloodProtectionLogParserActivated
     Properties:
-      Name: !Sub '${ParentStackName} - HTTP Flood Set'
+      Name: !Sub '${ParentStackName}-HttpFloodSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFScannersProbesSet:
     Type: 'AWS::WAFv2::IPSet'
     Condition: ScannersProbesProtectionActivated
     Properties:
-      Name: !Sub '${ParentStackName} - Scanners & Probes Set'
+      Name: !Sub '${ParentStackName}-ScannersAndProbesSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFReputationListsSet:
     Type: 'AWS::WAFv2::IPSet'
     Condition: ReputationListsProtectionActivated
     Properties:
-      Name: !Sub '${ParentStackName} - IP Reputation Lists Set'
+      Name: !Sub '${ParentStackName}-IpReputationListsSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFBadBotSet:
     Type: 'AWS::WAFv2::IPSet'
     Condition: BadBotProtectionActivated
     Properties:
-      Name: !Sub '${ParentStackName} - IP Bad Bot Set'
+      Name: !Sub '${ParentStackName}-IpBadBotSet'
       Scope: !Ref 'EndpointScope'
+      Addresses: ['127.0.0.1/32']
+      IPAddressVersion: 'IPV4'
 
   WAFSqlInjectionRule:
     Type: 'AWS::WAFv2::RuleGroup'
     Condition: SqlInjectionProtectionActivated
     Properties:
-      Name: !Sub '${ParentStackName} - SQL Injection Rule'
+      Name: !Sub '${ParentStackName}-SqlInjectionRule'
       Scope: !Ref 'EndpointScope'
       Capacity: 500
       VisibilityConfig:
@@ -149,7 +165,7 @@ Resources:
         CloudWatchMetricsEnabled: true
         MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'SqlInjectionRule']]
       Rules:
-        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Query String'
+        - Name: !Sub '${ParentStackName}-SqlInjectionRule-QueryString'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -159,7 +175,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Body'
+        - Name: !Sub '${ParentStackName}-SqlInjectionRule-Body'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -169,7 +185,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - SQL Injection Rule - URI'
+        - Name: !Sub '${ParentStackName}-SqlInjectionRule-URI'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -179,7 +195,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - SQL Injection Rule - Cookies'
+        - Name: !Sub '${ParentStackName}-SqlInjectionRule-Cookies'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -194,7 +210,7 @@ Resources:
     Type: 'AWS::WAFv2::RuleGroup'
     Condition: CrossSiteScriptingProtectionActivated
     Properties:
-      Name: !Sub '${ParentStackName} - XSS Rule'
+      Name: !Sub '${ParentStackName}-XssRule'
       Scope: !Ref 'EndpointScope'
       Capacity: 500
       VisibilityConfig:
@@ -202,7 +218,7 @@ Resources:
         CloudWatchMetricsEnabled: true
         MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'XssRule']]
       Rules:
-        - Name: !Sub '${ParentStackName} - XSS Rule - Query String'
+        - Name: !Sub '${ParentStackName}-XssRule-Query String'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -212,7 +228,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - XSS Rule - Body'
+        - Name: !Sub '${ParentStackName}-XssRule-Body'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -222,7 +238,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - XSS Rule - URI'
+        - Name: !Sub '${ParentStackName}-XssRule-URI'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -232,7 +248,7 @@ Resources:
                   Type: URL_DECODE
                 - Priority: 1
                   Type: HTML_ENTITY_DECODE
-        - Name: !Sub '${ParentStackName} - XSS Rule - Cookies'
+        - Name: !Sub '${ParentStackName}-XssRule-Cookies'
           Priority: 10
           Statement:
             XssMatchStatement:
@@ -257,73 +273,118 @@ Resources:
       Rules:
         - Action:
             Allow: {}
-          Name: !Sub '${ParentStackName} - Whitelist Rule'
+          Name: !Sub '${ParentStackName}-WhitelistRule'
           Priority: 10
           Statement:
-            IPSetReferenceStatement: !Ref WAFWhitelistSet
+            IPSetReferenceStatement: !GetAtt WAFWhitelistSet.Arn
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'Whitelist']]
         - Action:
             Block: {}
-          Name: !Sub '${ParentStackName} - Blacklist Rule'
+          Name: !Sub '${ParentStackName}-BlacklistRule'
           Priority: 20
           Statement:
-            IPSetReferenceStatement: !Ref WAFBlacklistSet
+            IPSetReferenceStatement: !GetAtt WAFBlacklistSet.Arn
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'Blacklist']]
         - !If
             - SqlInjectionProtectionActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - SQL Injection Detection'
+              Name: !Sub '${ParentStackName}-SqlInjectionDetection'
               Priority: 30
               Statement:
                 RuleGroupReferenceStatement:
-                  Arn: !Ref WAFSqlInjectionRule
+                  Arn: !GetAtt WAFSqlInjectionRule.Arn
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'SqlInjectionDetection']]
             - !Ref 'AWS::NoValue'
         - !If
             - CrossSiteScriptingProtectionActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - XSS Detection'
+              Name: !Sub '${ParentStackName}-XssDetection'
               Priority: 40
               Statement:
                 RuleGroupReferenceStatement:
-                  Arn: !Ref WAFXssRule
+                  Arn: !GetAtt WAFXssRule.Arn
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'XssDetection']]
             - !Ref 'AWS::NoValue'
         - !If
-            - HttpFloodProtectionLogParserActivated
+            - HttpFloodProtectionRateBasedRuleActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - HTTP Flood Rate Rule'
+              Name: !Sub '${ParentStackName}-HttpFloodRateRule'
               Priority: 50
               Statement:
                 RateBasedStatement:
                   AggregateKeyType: 'IP'
                   Limit: !Ref RequestThreshold
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'HttpFloodRateRule']]
+            - !Ref 'AWS::NoValue'
+        - !If
+            - HttpFloodProtectionLogParserActivated
+            - Action:
+                Block: {}
+              Name: !Sub '${ParentStackName}-HttpFloodProtection'
+              Priority: 55
+              Statement:
+                IPSetReferenceStatement: !Ref WAFHttpFloodSet
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'HttpFloodProtection']]
             - !Ref 'AWS::NoValue'
         - !If
             - ScannersProbesProtectionActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - Scanners & Probes Set'
+              Name: !Sub '${ParentStackName}-ScannersAndProbesSet'
               Priority: 60
               Statement:
                 IPSetReferenceStatement: !Ref WAFScannersProbesSet
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'ScannersAndProbes']]
             - !Ref 'AWS::NoValue'
         - !If
             - ReputationListsProtectionActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - IP Reputation Lists Set'
+              Name: !Sub '${ParentStackName}-IpReputationListsSet'
               Priority: 70
               Statement:
                 IPSetReferenceStatement: !Ref WAFReputationListsSet
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'IpReputationLists']]
             - !Ref 'AWS::NoValue'
         - !If
             - BadBotProtectionActivated
             - Action:
                 Block: {}
-              Name: !Sub '${ParentStackName} - IP Bad Bot Set'
+              Name: !Sub '${ParentStackName}-IpBadBotSet'
               Priority: 90
               Statement:
                 IPSetReferenceStatement: !Ref WAFBadBotSet
+              VisibilityConfig:
+                SampledRequestsEnabled: true
+                CloudWatchMetricsEnabled: true
+                MetricName: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'BadBot']]
             - !Ref 'AWS::NoValue'
     Metadata:
       cfn_nag:
