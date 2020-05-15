@@ -437,8 +437,6 @@ Resources:
         ActivateBadBotProtectionParam: !Ref ActivateBadBotProtectionParam
         AppAccessLogBucket: !Ref AppAccessLogBucket
         RequestThreshold: !Ref RequestThreshold
-        WafApiType: 'wafv2'
-        WafArnPrefix: !Sub 'arn:aws:wafv2:${AWS::Region}:'
         ParentStackName: !Ref 'AWS::StackName'
         WafLogBucket: !If [HttpFloodProtectionLogParserActivated, !Ref WafLogBucket, '']
         GlueAccessLogsDatabase: !If [AthenaLogParser, !GetAtt FirehoseAthenaStack.Outputs.GlueAccessLogsDatabase, '']

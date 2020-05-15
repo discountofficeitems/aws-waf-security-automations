@@ -40,10 +40,6 @@ Parameters:
     Type: String
   RequestThreshold:
     Type: Number
-  WafApiType:
-    Type: String
-  WafArnPrefix:
-    Type: String
   ParentStackName:
     Type: String
   WafLogBucket:
@@ -367,11 +363,11 @@ Resources:
                 # AWS WAF Resources
                 - Effect: Allow
                   Action:
-                    - !Sub '${WafApiType}:GetIPSet'
-                    - !Sub '${WafApiType}:UpdateIPSet'
+                    - 'wafv2:GetIPSet'
+                    - 'wafv2:UpdateIPSet'
                   Resource:
-                    - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFBlacklistSet}'
-                    - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFScannersProbesSet}'
+                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBlacklistSet}'
+                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFScannersProbesSet}'
           - !Ref 'AWS::NoValue'
         - !If
           - ScannersProbesAthenaLogParser
@@ -426,11 +422,11 @@ Resources:
                 # AWS WAF Resources
                 - Effect: Allow
                   Action:
-                    - !Sub '${WafApiType}:GetIPSet'
-                    - !Sub '${WafApiType}:UpdateIPSet'
+                    - 'wafv2:GetIPSet'
+                    - 'wafv2:UpdateIPSet'
                   Resource:
-                    - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFBlacklistSet}'
-                    - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFHttpFloodSet}'
+                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBlacklistSet}'
+                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFHttpFloodSet}'
           - !Ref 'AWS::NoValue'
         - !If
           - HttpFloodAthenaLogParser
@@ -471,9 +467,9 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: !Sub '${WafApiType}:GetChangeToken'
+                Action: 'wafv2:GetChangeToken'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:changetoken/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:changetoken/*'
         - PolicyName: LogsAccess
           PolicyDocument:
             Statement:
@@ -497,7 +493,7 @@ Resources:
           -
             id: W11
             reason: >-
-              WAFGetChangeToken - restricted to WafArnPrefix/AccountId;
+              WAFGetChangeToken - restricted to WafArn/AccountId;
               LogsAccess - permission restricted to account, region and log group name substring (LogParser);
               CloudWatchAccess - this actions does not support resource-level permissions
 
@@ -527,18 +523,18 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: !Sub '${WafApiType}:GetChangeToken'
+                Action: 'wafv2:GetChangeToken'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:changetoken/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:changetoken/*'
         - PolicyName: WAFGetAndUpdateIPSet
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
-                  - !Sub '${WafApiType}:GetIPSet'
-                  - !Sub '${WafApiType}:UpdateIPSet'
+                  - 'wafv2:GetIPSet'
+                  - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFReputationListsSet}'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFReputationListsSet}'
         - PolicyName: CloudFormationAccess
           PolicyDocument:
             Statement:
@@ -560,7 +556,7 @@ Resources:
             id: W11
             reason: >-
               CloudWatchLogs - permission restricted to account, region and log group name substring (ReputationListsParser);
-              WAFGetChangeToken - restricted to WafArnPrefix/AccountId;
+              WAFGetChangeToken - restricted to WafArn/AccountId;
               CloudFormationAccess - account, region and stack name;
               CloudWatchAccess - this actions does not support resource-level permissions
 
@@ -582,18 +578,18 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: !Sub '${WafApiType}:GetChangeToken'
+                Action: 'wafv2:GetChangeToken'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:changetoken/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:changetoken/*'
         - PolicyName: WAFGetAndUpdateIPSet
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
-                  - !Sub '${WafApiType}:GetIPSet'
-                  - !Sub '${WafApiType}:UpdateIPSet'
+                  - 'wafv2:GetIPSet'
+                  - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/${WAFBadBotSet}'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBadBotSet}'
         - PolicyName: LogsAccess
           PolicyDocument:
             Statement:
@@ -624,7 +620,7 @@ Resources:
           -
             id: W11
             reason: >-
-              WAFGetChangeToken - restricted to WafArnPrefix/AccountId;
+              WAFGetChangeToken - restricted to WafArn/AccountId;
               LogsAccess - permission restricted to account, region and log group name substring (BadBotParser);
               CloudFormationAccess - account, region and stack name;
               CloudWatchAccess - this actions does not support resource-level permissions
@@ -710,44 +706,30 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - !Sub '${WafApiType}:GetWebACL'
-                  - !Sub '${WafApiType}:UpdateWebACL'
+                  - 'wafv2:GetWebACL'
+                  - 'wafv2:UpdateWebACL'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:webacl/${WAFWebACL}'
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:rule/*'
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:ratebasedrule/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:rule/*'
         - PolicyName: 'WAFRuleAccess'
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
-                  - !Sub '${WafApiType}:GetRule'
-                  - !Sub '${WafApiType}:GetIPSet'
-                  - !Sub '${WafApiType}:UpdateIPSet'
+                  - 'wafv2:GetRule'
+                  - 'wafv2:GetIPSet'
+                  - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:rule/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:rule/*'
         - PolicyName: 'WAFIPSetAccess'
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
-                  - !Sub '${WafApiType}:GetIPSet'
-                  - !Sub '${WafApiType}:UpdateIPSet'
+                  - 'wafv2:GetIPSet'
+                  - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:ipset/*'
-        - PolicyName: 'WAFRateBasedRuleAccess'
-          PolicyDocument:
-            Statement:
-              - Effect: Allow
-                Action:
-                  - !Sub '${WafApiType}:GetRateBasedRule'
-                  - !Sub '${WafApiType}:CreateRateBasedRule'
-                  - !Sub '${WafApiType}:UpdateRateBasedRule'
-                  - !Sub '${WafApiType}:DeleteRateBasedRule'
-                  - !Sub '${WafApiType}:ListRateBasedRules'
-                  - !Sub '${WafApiType}:UpdateWebACL'
-                Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:ratebasedrule/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/*'
         - !If
           - HttpFloodProtectionLogParserActivated
           - PolicyName: WAFLogsAccess
@@ -755,10 +737,10 @@ Resources:
               Statement:
                 - Effect: Allow
                   Action:
-                    - !Sub '${WafApiType}:PutLoggingConfiguration'
-                    - !Sub '${WafApiType}:DeleteLoggingConfiguration'
+                    - 'wafv2:PutLoggingConfiguration'
+                    - 'wafv2:DeleteLoggingConfiguration'
                   Resource:
-                    - !Sub '${WafArnPrefix}${AWS::AccountId}:webacl/${WAFWebACL}'
+                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
                 - Effect: Allow
                   Action: 'iam:CreateServiceLinkedRole'
                   Resource:
@@ -778,9 +760,9 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: !Sub '${WafApiType}:GetChangeToken'
+                Action: 'wafv2:GetChangeToken'
                 Resource:
-                  - !Sub '${WafArnPrefix}${AWS::AccountId}:changetoken/*'
+                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:changetoken/*'
         - PolicyName: LogsAccess
           PolicyDocument:
             Statement:
@@ -797,9 +779,9 @@ Resources:
           -
             id: W11
             reason: >-
-              WAFAccess, WAFRuleAccess, WAFIPSetAccess and WAFRateBasedRuleAccess - restricted to WafArnPrefix/AccountId;
+              WAFAccess, WAFRuleAccess and WAFIPSetAccess - restricted to WafArn/AccountId;
               CloudFormationAccess - account, region and stack name;
-              WAFGetChangeToken - restricted to WafArnPrefix/AccountId;
+              WAFGetChangeToken - restricted to WafArn/AccountId;
               LogsAccess - permission restricted to account, region and log group name substring (CustomResource);
 
 Outputs:
@@ -825,28 +807,6 @@ Outputs:
     Value: !Ref WAFBadBotSet
     Condition: BadBotProtectionActivated
 
-  WAFWhitelistRule:
-    Value: !Ref WAFWhitelistRule
-
-  WAFBlacklistRule:
-    Value: !Ref WAFBlacklistRule
-
-  WAFHttpFloodRegularRule:
-    Value: !Ref WAFHttpFloodRegularRule
-    Condition: HttpFloodProtectionLogParserActivated
-
-  WAFScannersProbesRule:
-    Value: !Ref WAFScannersProbesRule
-    Condition: ScannersProbesProtectionActivated
-
-  WAFIPReputationListsRule:
-    Value: !Ref WAFIPReputationListsRule
-    Condition: ReputationListsProtectionActivated
-
-  WAFBadBotRule:
-    Value: !Ref WAFBadBotRule
-    Condition: BadBotProtectionActivated
-
   WAFSqlInjectionRule:
     Value: !Ref WAFSqlInjectionRule
     Condition: SqlInjectionProtectionActivated
@@ -859,7 +819,7 @@ Outputs:
     Value: !Ref WAFWebACL
 
   WAFWebACLArn:
-    Value: !Sub '${WafArnPrefix}${AWS::AccountId}:webacl/${WAFWebACL}'
+    Value: !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
 
   WAFWebACLMetricName:
     Value: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'MaliciousRequesters']]
