@@ -341,7 +341,7 @@ Resources:
               Name: !Sub '${ParentStackName}-HttpFloodProtection'
               Priority: 55
               Statement:
-                IPSetReferenceStatement: !Ref WAFHttpFloodSet
+                IPSetReferenceStatement: !GetAtt WAFHttpFloodSet.Arn
               VisibilityConfig:
                 SampledRequestsEnabled: true
                 CloudWatchMetricsEnabled: true
@@ -354,7 +354,7 @@ Resources:
               Name: !Sub '${ParentStackName}-ScannersAndProbesSet'
               Priority: 60
               Statement:
-                IPSetReferenceStatement: !Ref WAFScannersProbesSet
+                IPSetReferenceStatement: !GetAtt WAFScannersProbesSet.Arn
               VisibilityConfig:
                 SampledRequestsEnabled: true
                 CloudWatchMetricsEnabled: true
@@ -367,7 +367,7 @@ Resources:
               Name: !Sub '${ParentStackName}-IpReputationListsSet'
               Priority: 70
               Statement:
-                IPSetReferenceStatement: !Ref WAFReputationListsSet
+                IPSetReferenceStatement: !GetAtt WAFReputationListsSet.Arn
               VisibilityConfig:
                 SampledRequestsEnabled: true
                 CloudWatchMetricsEnabled: true
@@ -380,7 +380,7 @@ Resources:
               Name: !Sub '${ParentStackName}-IpBadBotSet'
               Priority: 90
               Statement:
-                IPSetReferenceStatement: !Ref WAFBadBotSet
+                IPSetReferenceStatement: !GetAtt WAFBadBotSet.Arn
               VisibilityConfig:
                 SampledRequestsEnabled: true
                 CloudWatchMetricsEnabled: true
@@ -427,8 +427,8 @@ Resources:
                     - 'wafv2:GetIPSet'
                     - 'wafv2:UpdateIPSet'
                   Resource:
-                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBlacklistSet}'
-                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFScannersProbesSet}'
+                    - !GetAtt WAFBlacklistSet.Arn
+                    - !GetAtt WAFScannersProbesSet.Arn
           - !Ref 'AWS::NoValue'
         - !If
           - ScannersProbesAthenaLogParser
@@ -486,8 +486,8 @@ Resources:
                     - 'wafv2:GetIPSet'
                     - 'wafv2:UpdateIPSet'
                   Resource:
-                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBlacklistSet}'
-                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFHttpFloodSet}'
+                    - !GetAtt WAFBlacklistSet.Arn
+                    - !GetAtt WAFHttpFloodSet.Arn
           - !Ref 'AWS::NoValue'
         - !If
           - HttpFloodAthenaLogParser
@@ -595,7 +595,7 @@ Resources:
                   - 'wafv2:GetIPSet'
                   - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFReputationListsSet}'
+                  - !GetAtt WAFReputationListsSet.Arn
         - PolicyName: CloudFormationAccess
           PolicyDocument:
             Statement:
@@ -650,7 +650,7 @@ Resources:
                   - 'wafv2:GetIPSet'
                   - 'wafv2:UpdateIPSet'
                 Resource:
-                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:ipset/${WAFBadBotSet}'
+                  - !GetAtt WAFBadBotSet.Arn
         - PolicyName: LogsAccess
           PolicyDocument:
             Statement:
@@ -770,7 +770,7 @@ Resources:
                   - 'wafv2:GetWebACL'
                   - 'wafv2:UpdateWebACL'
                 Resource:
-                  - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
+                  - !GetAtt WAFWebACL.Arn
                   - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:rule/*'
         - PolicyName: 'WAFRuleAccess'
           PolicyDocument:
@@ -801,7 +801,7 @@ Resources:
                     - 'wafv2:PutLoggingConfiguration'
                     - 'wafv2:DeleteLoggingConfiguration'
                   Resource:
-                    - !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
+                    - !GetAtt WAFWebACL.Arn
                 - Effect: Allow
                   Action: 'iam:CreateServiceLinkedRole'
                   Resource:
@@ -880,7 +880,7 @@ Outputs:
     Value: !Ref WAFWebACL
 
   WAFWebACLArn:
-    Value: !Sub 'arn:aws:wafv2:${AWS::Region}:${AWS::AccountId}:webacl/${WAFWebACL}'
+    Value: !GetAtt WAFWebACL.Arn
 
   WAFWebACLMetricName:
     Value: !Join ['', [!Join ['', !Split ['-', !Ref ParentStackName]], 'MaliciousRequesters']]
