@@ -158,61 +158,6 @@ def remove_s3_bucket_lambda_event(bucket_name, lambda_function_arn):
 
         logging.getLogger().debug("[remove_s3_bucket_lambda_event] End")
 
-
-#======================================================================================================================
-# Configure Rate Based Rule
-#======================================================================================================================
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def create_rate_based_rule(stack_name, request_threshold, metric_name_prefix):
-    logging.getLogger().debug("[create_rate_based_rule] Start")
-
-    rule_id = ""
-
-    response = waf_client.create_rate_based_rule(
-        Name = stack_name + RULE_SUFIX_RATE_BASED,
-        MetricName = metric_name_prefix + 'HttpFloodRule',
-        RateKey='IP',
-        RateLimit=int(request_threshold.replace(",","")),
-        ChangeToken=waf_client.get_change_token()['ChangeToken']
-    )
-    rule_id = response['Rule']['RuleId'].strip()
-
-    logging.getLogger().debug("[create_rate_based_rule] End")
-    return rule_id
-
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def update_rate_based_rule(rule_id, request_threshold):
-    logging.getLogger().debug("[update_rate_based_rule] Start")
-
-    try:
-        waf_client.update_rate_based_rule(
-            RuleId=rule_id,
-            Updates=[],
-            RateLimit=int(request_threshold.replace(",","")),
-            ChangeToken=waf_client.get_change_token()['ChangeToken']
-        )
-
-    except waf_client.exceptions.WAFNonexistentItemException:
-        raise Exception("Rate based rule %s doesn't exist (already deleted or failed to create)"%rule_id)
-
-    logging.getLogger().debug("[update_rate_based_rule] End")
-
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def delete_rate_based_rule(rule_id):
-    logging.getLogger().debug("[delete_rate_based_rule] Start")
-
-    try:
-        waf_client.delete_rate_based_rule(
-            RuleId=rule_id,
-            ChangeToken=waf_client.get_change_token()['ChangeToken']
-        )
-
-    except waf_client.exceptions.WAFNonexistentItemException:
-        logging.getLogger().debug("[delete_rate_based_rule] Rate based rule %s doesn't exist (already deleted or failed to create)"%rule_id)
-
-    logging.getLogger().debug("[delete_rate_based_rule] End")
-
-
 #======================================================================================================================
 # Configure AWS WAF Logs
 #======================================================================================================================
