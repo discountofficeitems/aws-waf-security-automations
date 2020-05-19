@@ -88,10 +88,10 @@ def check_service_dependencies(resource_properties):
     unavailable_services = []
 
     #------------------------------------------------------------------------------------------------------------------
-    # AWS WAF Regional
+    # AWS WAFv2
     #------------------------------------------------------------------------------------------------------------------
     try:
-        waf_client = boto3.client(environ['API_TYPE'])
+        waf_client = boto3.client('wafv2')
         waf_client.list_web_acls()
     except botocore.exceptions.EndpointConnectionError:
         unavailable_services.append('AWS WAF')
@@ -126,7 +126,7 @@ def check_service_dependencies(resource_properties):
     #------------------------------------------------------------------------------------------------------------------
     # Amazon Kinesis Data Firehose
     #------------------------------------------------------------------------------------------------------------------
-    if resource_properties['HttpFloodProtectionLogParserActivated'] == "yes":
+    if resource_properties['HttpFloodAthenaLogParser'] == "yes":
         try:
             firehose_client = boto3.client('firehose')
             firehose_client.list_delivery_streams()

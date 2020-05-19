@@ -317,7 +317,6 @@ Resources:
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'helper.zip']]
       Environment:
         Variables:
-          API_TYPE: 'wafv2'
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
       Runtime: python3.8
       MemorySize: 128
@@ -329,7 +328,7 @@ Resources:
       ServiceToken: !GetAtt Helper.Arn
       AthenaLogParser: !If [AthenaLogParser, 'yes', 'no']
       HttpFloodProtectionRateBasedRuleActivated: !If [HttpFloodProtectionRateBasedRuleActivated, 'yes', 'no']
-      HttpFloodProtectionLogParserActivated: !If [HttpFloodProtectionLogParserActivated, 'yes', 'no']
+      HttpFloodAthenaLogParser: !If [HttpFloodAthenaLogParser, 'yes', 'no']
       ProtectionActivatedScannersProbes: !If [ScannersProbesProtectionActivated, 'yes', 'no']
       AppAccessLogBucket: !Ref AppAccessLogBucket
       Region: !Ref 'AWS::Region'
@@ -566,12 +565,12 @@ Resources:
                   {"url":"https://check.torproject.org/exit-addresses", "prefix":"ExitAddress"},
                   {"url":"https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"}
                 ],
-                "apiType": "${ApiType}",
+                "apiType": "${EndpointType}",
                 "region": "${AWS::Region}",
-                "ipSetIds": ["${WAFReputationListsSet}"]
+                "ipSetRefs": ["${WAFReputationListsSet}"]
               }
             -
-              ApiType: 'wafv2'
+              EndpointType: !Ref EndpointType
               WAFReputationListsSet: !GetAtt WafStack.Outputs.WAFReputationListsSet
 
   LambdaInvokePermissionReputationListsParser:
@@ -702,7 +701,7 @@ Resources:
         S3Key: !Join ['/', [!FindInMap ["SourceCode", "General", "KeyPrefix"], 'custom-resource.zip']]
       Environment:
         Variables:
-          API_TYPE: 'wafv2'
+          EndpointType: !Ref EndpointType
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
       Runtime: python3.8
       MemorySize: 128
