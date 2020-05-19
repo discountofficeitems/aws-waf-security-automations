@@ -333,7 +333,7 @@ async function send_anonymous_usage_data(event) {
             "allowed_requests": allowedRequests,
             "blocked_requests_all": blockedRequests,
             "blocked_requests_ip_reputation_lists": blockedRequestsIpReputationLists,
-            "waf_type": event.apiType
+            "waf_type": process.env.ENDPOINT_TYPE
         }
     });
 

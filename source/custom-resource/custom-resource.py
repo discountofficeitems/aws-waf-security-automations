@@ -35,7 +35,7 @@ BATCH_DELETE_LIMIT = 500
 DELAY_BETWEEN_DELETES = 2
 RULE_SUFIX_RATE_BASED = "-HTTP Flood Rule"
 
-waf_client = boto3.client(environ['API_TYPE'], config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+waf_client = boto3.client('wafv2', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
 
 #======================================================================================================================
 # Configure Access Log Bucket
@@ -206,12 +206,10 @@ def populate_reputation_list(region, reputation_lists_parser_function, reputatio
                         "url": "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"
                     }
                   ],
-                  "apiType":"%s",
-                  "region":"%s",
-                  "ipSetIds": [
+                  "ipSetRefs": [
                         "%s"
                   ]
-                }"""%(environ['API_TYPE'], region, reputation_list_set)
+                }"""%(reputation_list_set)
         )
 
     except Exception as error:
