@@ -30,24 +30,24 @@ logging.getLogger().debug('Loading function')
 #======================================================================================================================
 API_CALL_NUM_RETRIES = 5
 
-waf = None
+waf = boto3.client('wafv2', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+scope = None
 if environ['LOG_TYPE'] == 'alb':
-    session = boto3.session.Session(region_name=environ['REGION'])
-    waf = session.client('waf-regional', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+    scope = 'REGIONAL'
 else:
-    waf = boto3.client('waf', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+    scope = 'CLOUDFRONT'
 
 #======================================================================================================================
 # Auxiliary Functions
 #======================================================================================================================
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
+@on_exception(expo, waf.exceptions.WAFOptimisticLockException, max_time=10)
 def waf_update_ip_set(ip_set_id, source_ip):
     logging.getLogger().debug('[waf_update_ip_set] Start')
 
     ip_type = "IPV%s"%ip_address(source_ip).version
     ip_class = "32" if ip_type == "IPV4" else "128"
     waf.update_ip_set(IPSetId=ip_set_id,
-        ChangeToken=waf.get_change_token()['ChangeToken'],
+        LockToken=waf.get_change_token()['LockToken'],
         Updates=[{
             'Action': 'INSERT',
             'IPSetDescriptor': {
@@ -59,7 +59,7 @@ def waf_update_ip_set(ip_set_id, source_ip):
 
     logging.getLogger().debug('[waf_update_ip_set] End')
 
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
+@on_exception(expo, waf.exceptions.WAFOptimisticLockException, max_time=10)
 def waf_get_ip_set(ip_set_id):
     logging.getLogger().debug('[waf_get_ip_set] Start')
     response = waf.get_ip_set(IPSetId=ip_set_id)
