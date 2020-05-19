@@ -32,7 +32,6 @@ logging.getLogger().debug('Loading function')
 # Constants/Globals
 #======================================================================================================================
 API_CALL_NUM_RETRIES = 5
-MAX_DESCRIPTORS_PER_IP_SET_UPDATE = 500
 DELAY_BETWEEN_UPDATES = 2
 
 # CloudFront Access Logs
@@ -55,57 +54,76 @@ LINE_FORMAT_ALB = {
     'uri': 13
 }
 
-waf = None
-if environ['LOG_TYPE'] == 'alb':
-    session = boto3.session.Session(region_name=environ['REGION'])
-    waf = session.client('waf-regional', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
-else:
-    waf = boto3.client('waf', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+waf = boto3.client('wafv2', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
 config = {}
 
 #======================================================================================================================
 # Auxiliary Functions
 #======================================================================================================================
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
-def waf_get_ip_set(ip_set_id):
+def waf_get_ip_set(ip_set_ref):
     logging.getLogger().debug('[waf_get_ip_set] Start')
-    response = waf.get_ip_set(IPSetId=ip_set_id)
+    ref_parts = ip_set_ref.split('|')
+    response = waf.get_ip_set(
+        Name=ref_parts[0],
+        IPSetId=ref_parts[1],
+        Scope=ref_parts[2]
+    )
+    if response['IPSet'] is not None and response['IPSet']['Scope'] is None:
+        response['IPSet']['Scope'] = ref_parts[2]
     logging.getLogger().debug('[waf_get_ip_set] End')
     return response
 
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
-def waf_update_ip_set(ip_set_id, updates):
+@on_exception(expo, waf.exceptions.WAFOptimisticLockException, max_time=10)
+def waf_update_ip_set(ip_set, scope, cidr_list):
     logging.getLogger().debug('[waf_update_ip_set] Start')
-    response = waf.update_ip_set(IPSetId=ip_set_id,
-        ChangeToken=waf.get_change_token()['ChangeToken'],
-        Updates=updates)
+    # refresh the lock token
+    ip_set = waf.get_ip_set(
+        Name=ip_set['IPSet']['Name']
+        IPSetId=ip_set['IPSet']['Ip'],
+        Scope=scope
+    )
+
+    if set(cidr_list) == set(ip_set['IPSet']['Addresses']):
+        return
+
+    waf.update_ip_set(
+        Name=ip_set['IPSet']['Name']
+        IPSetId=ip_set['IPSet']['Ip'],
+        Scope=scope,
+        Addresses=cidr_list,
+        LockToken=ip_set['LockToken']
+    )
     logging.getLogger().debug('[waf_update_ip_set] End')
-    return response
+    return
 
-def waf_commit_updates(ip_set_id, updates_list):
+def waf_commit_updates(ip_set, ip_list):
     logging.getLogger().debug('[waf_commit_updates] Start')
-    response = None
+    ip_type = ip_set['IPSet']['IPAddressVersion']
 
-    if len(updates_list) > 0:
-        index = 0
-        while index < len(updates_list):
-            logging.getLogger().debug('[waf_commit_updates] Processing from index %d.'%index)
-            response = waf_update_ip_set(ip_set_id, updates_list[index: index + MAX_DESCRIPTORS_PER_IP_SET_UPDATE])
-            index += MAX_DESCRIPTORS_PER_IP_SET_UPDATE
-            if index < len(updates_list):
-                logging.getLogger().debug('[waf_commit_updates] Sleep %d sec befone next slot to avoid AWS WAF API throttling ...'%DELAY_BETWEEN_UPDATES)
-                time.sleep(DELAY_BETWEEN_UPDATES)
+    ip_class = "32" if ip_type == "IPV4" else "128"
+    cidr_list = list(lambda x: '%s/%s'%(x, ip_class), ip_list)
+
+    if len(updates_list) == 0:
+        cidr_list = ['127.0.0.1/32'] if ip_type == "IPV4" else ["::1/128"]
+
+    waf_update_ip_set(ip_set, ip_set['IPSet']['Scope'], cidr_list)
 
     logging.getLogger().debug('[waf_commit_updates] End')
     return response
 
-def update_waf_ip_set(ip_set_id, outstanding_requesters):
+def update_waf_ip_set(ip_set_ref, outstanding_requesters):
     logging.getLogger().debug('[update_waf_ip_set] Start')
 
     counter = 0
     try:
-        if ip_set_id == None:
-            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set_id is None")
+        ip_set = None
+        if ip_set_ref == None:
+            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set reference is None")
+            return
+        ip_set = waf_get_ip_set(ip_set_ref);
+
+        if ip_set == None:
+            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set is None")
             return
 
         updates_list = []
@@ -121,56 +139,27 @@ def update_waf_ip_set(ip_set_id, outstanding_requesters):
                     unified_outstanding_requesters[k] = outstanding_requesters['uriList'][uri][k]
 
         #--------------------------------------------------------------------------------------------------------------
+        logging.getLogger().info("[update_waf_ip_set] \tRemove IPs that are not the same IP version as IP-Set")
+        #--------------------------------------------------------------------------------------------------------------
+        # TODO: add back dualstack support
+        ip_version = ip_set['IPSet']['IPAddressVersion'][-1]
+
+        for ip in unified_outstanding_requesters.keys():
+            if ip_version != ip_address(ip).version:
+                unified_outstanding_requesters.pop(ip, None)
+
+        #--------------------------------------------------------------------------------------------------------------
         logging.getLogger().info("[update_waf_ip_set] \tTruncate [if necessary] list to respect WAF limit")
         #--------------------------------------------------------------------------------------------------------------
-        if len(unified_outstanding_requesters) > int(environ['LIMIT_IP_ADDRESS_RANGES_PER_IP_MATCH_CONDITION']):
+        ip_limit = int(environ['LIMIT_IP_ADDRESS_RANGES_PER_IP_MATCH_CONDITION'])
+        if len(unified_outstanding_requesters) > ip_limit:
             ordered_unified_outstanding_requesters = sorted(unified_outstanding_requesters.items(), key=lambda kv: kv[1]['max_counter_per_min'], reverse=True)
-            unified_outstanding_requesters = {}
-            for key, value in ordered_unified_outstanding_requesters:
-                if counter < int(environ['LIMIT_IP_ADDRESS_RANGES_PER_IP_MATCH_CONDITION']):
-                    unified_outstanding_requesters[key] = value
-                    counter += 1
-                else:
-                    break
-
-        #--------------------------------------------------------------------------------------------------------------
-        logging.getLogger().info("[update_waf_ip_set] \tRemove IPs that are not in current outstanding requesters list")
-        #--------------------------------------------------------------------------------------------------------------
-        response = waf_get_ip_set(ip_set_id)
-        if response != None:
-            for k in response['IPSet']['IPSetDescriptors']:
-                ip_value = k['Value'].split('/')[0]
-                if ip_value not in unified_outstanding_requesters.keys():
-                    ip_type = "IPV%s"%ip_address(ip_value).version
-                    updates_list.append({
-                        'Action': 'DELETE',
-                        'IPSetDescriptor': {
-                            'Type': ip_type,
-                            'Value': k['Value']
-                        }
-                    })
-                else:
-                    # Dont block an already blocked IP
-                    unified_outstanding_requesters.pop(ip_value, None)
-
-        #--------------------------------------------------------------------------------------------------------------
-        logging.getLogger().info("[update_waf_ip_set] \tBlock remaining outstanding requesters")
-        #--------------------------------------------------------------------------------------------------------------
-        for k in unified_outstanding_requesters.keys():
-            ip_type = "IPV%s"%ip_address(k).version
-            ip_class = "32" if ip_type == "IPV4" else "128"
-            updates_list.append({
-                'Action': 'INSERT',
-                'IPSetDescriptor': {
-                    'Type': ip_type,
-                    'Value': "%s/%s"%(k, ip_class)
-                }
-            })
+            unified_outstanding_requesters = dict(ordered_unified_outstanding_requesters[0:ip_limit])
 
         #--------------------------------------------------------------------------------------------------------------
         logging.getLogger().info("[update_waf_ip_set] \tCommit changes in WAF IP set")
         #--------------------------------------------------------------------------------------------------------------
-        response = waf_commit_updates(ip_set_id, updates_list)
+        response = waf_commit_updates(ip_set, unified_outstanding_requesters.keys())
 
     except Exception as error:
         logging.getLogger().error(str(error))
@@ -267,7 +256,7 @@ def send_anonymous_usage_data():
             try:
                 response = waf_get_ip_set(environ['IP_SET_ID_SCANNERS_PROBES'])
                 if response != None:
-                    usage_data['Data']['scanners_probes_set_size'] = len(response['IPSet']['IPSetDescriptors'])
+                    usage_data['Data']['scanners_probes_set_size'] = len(response['IPSet']['Addresses'])
 
                 response = cw.get_metric_statistics(
                     MetricName='BlockedRequests',
@@ -300,7 +289,7 @@ def send_anonymous_usage_data():
             try:
                 response = waf_get_ip_set(environ['IP_SET_ID_HTTP_FLOOD'])
                 if response != None:
-                    usage_data['Data']['http_flood_set_size'] = len(response['IPSet']['IPSetDescriptors'])
+                    usage_data['Data']['http_flood_set_size'] = len(response['IPSet']['Addresses'])
 
                 response = cw.get_metric_statistics(
                     MetricName='BlockedRequests',
