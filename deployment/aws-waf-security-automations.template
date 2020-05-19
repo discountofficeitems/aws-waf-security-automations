@@ -454,7 +454,6 @@ Resources:
           UUID: !GetAtt CreateUniqueID.UUID
           LIMIT_IP_ADDRESS_RANGES_PER_IP_MATCH_CONDITION: '10000'
           MAX_AGE_TO_UPDATE: '30'
-          REGION: !Ref 'AWS::Region'
           LOG_TYPE: !FindInMap ["Solution", "LogType", !Ref EndpointType]
           METRIC_NAME_PREFIX: !Join ['', !Split ['-', !Ref 'AWS::StackName']]
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
@@ -601,7 +600,6 @@ Resources:
           IP_SET_ID_BAD_BOT: !GetAtt WafStack.Outputs.WAFBadBotSet
           SEND_ANONYMOUS_USAGE_DATA: !FindInMap ["Solution", "Data", "SendAnonymousUsageData"]
           UUID: !GetAtt CreateUniqueID.UUID
-          REGION: !Ref 'AWS::Region'
           LOG_TYPE: !FindInMap ["Solution", "LogType", !Ref EndpointType]
           METRIC_NAME_PREFIX: !Join ['', !Split ['-', !Ref 'AWS::StackName']]
           LOG_LEVEL: !FindInMap ["Solution", "Data", "LogLevel"]
