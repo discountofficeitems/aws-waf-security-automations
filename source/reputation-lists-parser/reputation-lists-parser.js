@@ -25,19 +25,13 @@ aws.config.update({
         base: 1000
     }
 });
-let waf = null;
+const waf = new aws.WAFV2();
 const cloudwatch = new aws.CloudWatch();
 
 /**
  * Maximum number of IP descriptors per IP Set
  */
 const maxDescriptorsPerIpSet = 10000;
-
-/**
- * Maximum number of IP descriptors updates per call
- */
-const maxDescriptorsPerIpSetUpdate = 500;
-const waitTimeBettweenUpdates = 2000;
 
 /**
  * Convert a dotted-decimal formated address to an integer
@@ -259,14 +253,10 @@ function flattenObjectArray(arr, propertyName) {
     });
 }
 
-async function getReputationIpSetSize(ipSetIds) {
-    const allIpSets = await Promise.all(ipSetIds.map((ipSetId) => {
-        return waf.getIPSet({IPSetId: ipSetId}).promise();
-    }));
-    const ipSets = flattenObjectArray(allIpSets, 'IPSet');
+function getReputationIpSetSize(ipSets) {
     let reputationIpSetSize = 0;
     for (const ipSet of ipSets) {
-        reputationIpSetSize += ipSet.IPSetDescriptors.length;
+        reputationIpSetSize += ipSet.Addresses.length;
     }
 
     return reputationIpSetSize;
@@ -305,7 +295,7 @@ async function getCloudWatchDataPointSum(metricName) {
  * Sends anonymous data to AWS (if SendAnonymousUsageData CloudFormation parameter is set to yes).
  * @param {Event} event - Lambda event object
  */
-async function send_anonymous_usage_data(event) {
+async function send_anonymous_usage_data(event, ipSets) {
     if (process.env.SEND_ANONYMOUS_USAGE_DATA.toLowerCase() !== "yes") {
         return 'Data sent';
     }
@@ -316,7 +306,7 @@ async function send_anonymous_usage_data(event) {
         blockedRequests,
         blockedRequestsIpReputationLists,
     ] = await Promise.all([
-        getReputationIpSetSize(event.ipSetIds),
+        getReputationIpSetSize(ipSets),
         getCloudWatchDataPointSum('AllowedRequests'),
         getCloudWatchDataPointSum('BlockedRequests'),
         getCloudWatchDataPointSum(process.env.ACL_METRIC_NAME + 'IPReputationListsRule'),
@@ -377,13 +367,11 @@ exports.handler = async (event) => {
         return 'Nothing to do';
     }
 
-    waf = new aws.WAFV2();
-
     const [
         rangesForEachList,
         allIpSets,
     ] = await Promise.all([
-        Promise.all(events.lists.map((list) => {
+        Promise.all(event.lists.map((list) => {
             const request = new List(list.url, list.prefix);
             return request.getRanges();
         })),
@@ -391,7 +379,7 @@ exports.handler = async (event) => {
             const reference = ipSetRef.split('|');
             return waf.getIPSet({
                 Name: reference[0],
-                IPSetId: reference[1],
+                Id: reference[1],
                 Scope: reference[2],
             }).promise().then((response) => {
                 // Move a few details into the "IPSet"
@@ -415,26 +403,28 @@ exports.handler = async (event) => {
     console.log('[handler] ' + ipSets.length + ' IP Sets in total');
 
     for (const [index, ipSet] of ipSets.entries()) {
-        const ipSetName = ipSet.Name;
         const addresses = ipSet.Addresses;
         const begin = index * maxDescriptorsPerIpSet;
-        const rangeSlice = ranges.slice(begin, begin + maxDescriptorsPerIpSet);
+        const rangeSlice = flattenObjectArray(ranges.slice(begin, begin + maxDescriptorsPerIpSet), 'cidr');
 
         if (addresses.length === rangeSlice.length && addresses.sort().equals(rangeSlice.sort())) {
-            console.log('[handler] No update required for IP set' + ipSetName);
+            console.log('[handler] No update required for IP set' + ipSet.Name);
             continue;
         }
 
-        console.log('[handler] IP Set ' + ipSetName + ' has ' + addresses.length + ' addresses and should have ' + rangeSlice.length);
+        console.log('[handler] IP Set ' + ipSet.Name + ' has ' + addresses.length + ' addresses and should have ' + rangeSlice.length);
 
         await waf.updateIPSet({
             LockToken: ipSet.LockToken,
-            Id: ipSet.IPSetId,
-            Name: ipSetName,
+            Id: ipSet.Id,
+            Name: ipSet.Name,
             Scope: ipSet.Scope,
             Addresses: rangeSlice,
-        }).promise();
+        }).promise().then((response) => {
+            ipSet.Addresses = rangeSlice;
+            ipSet.LockToken = response.NextLockToken;
+        });
     }
 
-    await send_anonymous_usage_data(event);
+    await send_anonymous_usage_data(event, ipSets);
 };

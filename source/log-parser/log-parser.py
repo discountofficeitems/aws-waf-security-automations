@@ -76,9 +76,10 @@ def waf_get_ip_set(ip_set_ref):
 @on_exception(expo, waf.exceptions.WAFOptimisticLockException, max_time=10)
 def waf_update_ip_set(ip_set, scope, cidr_list):
     logging.getLogger().debug('[waf_update_ip_set] Start')
+
     # refresh the lock token
     ip_set = waf.get_ip_set(
-        Name=ip_set['IPSet']['Name']
+        Name=ip_set['IPSet']['Name'],
         IPSetId=ip_set['IPSet']['Ip'],
         Scope=scope
     )
@@ -87,7 +88,7 @@ def waf_update_ip_set(ip_set, scope, cidr_list):
         return
 
     waf.update_ip_set(
-        Name=ip_set['IPSet']['Name']
+        Name=ip_set['IPSet']['Name'],
         IPSetId=ip_set['IPSet']['Ip'],
         Scope=scope,
         Addresses=cidr_list,
