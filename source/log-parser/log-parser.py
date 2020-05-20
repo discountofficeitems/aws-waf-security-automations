@@ -65,7 +65,7 @@ def waf_get_ip_set(ip_set_ref):
     ref_parts = ip_set_ref.split('|')
     response = waf.get_ip_set(
         Name=ref_parts[0],
-        IPSetId=ref_parts[1],
+        Id=ref_parts[1],
         Scope=ref_parts[2]
     )
     if 'IPSet' in response and not 'Scope' in response['IPSet']:
@@ -80,7 +80,7 @@ def waf_update_ip_set(ip_set, scope, cidr_list):
     # refresh the lock token
     ip_set = waf.get_ip_set(
         Name=ip_set['IPSet']['Name'],
-        IPSetId=ip_set['IPSet']['Ip'],
+        Id=ip_set['IPSet']['Ip'],
         Scope=scope
     )
 

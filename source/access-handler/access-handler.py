@@ -70,7 +70,7 @@ def waf_get_ip_set(ip_set_ref):
     ref_parts = ip_set_ref.split('|')
     response = waf.get_ip_set(
         Name=ref_parts[0],
-        IPSetId=ref_parts[1],
+        Id=ref_parts[1],
         Scope=ref_parts[2]
     )
     if 'IPSet' in response and not 'Scope' in response['IPSet']:
