@@ -68,7 +68,7 @@ def waf_get_ip_set(ip_set_ref):
         IPSetId=ref_parts[1],
         Scope=ref_parts[2]
     )
-    if response['IPSet'] is not None and response['IPSet']['Scope'] is None:
+    if 'IPSet' in response and not 'Scope' in response['IPSet']:
         response['IPSet']['Scope'] = ref_parts[2]
     logging.getLogger().debug('[waf_get_ip_set] End')
     return response
@@ -119,12 +119,12 @@ def update_waf_ip_set(ip_set_ref, outstanding_requesters):
     try:
         ip_set = None
         if ip_set_ref == None:
-            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set reference is None")
+            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set reference is not set")
             return
         ip_set = waf_get_ip_set(ip_set_ref);
 
         if ip_set == None:
-            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set is None")
+            logging.getLogger().info("[update_waf_ip_set] Ignore process when ip_set is not found")
             return
 
         updates_list = []
