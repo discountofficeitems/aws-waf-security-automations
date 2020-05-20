@@ -293,9 +293,9 @@ async function getCloudWatchDataPointSum(metricName) {
 
 /**
  * Sends anonymous data to AWS (if SendAnonymousUsageData CloudFormation parameter is set to yes).
- * @param {Event} event - Lambda event object
+ * @param {object[]} ipSets - array of IpSets
  */
-async function send_anonymous_usage_data(event, ipSets) {
+async function send_anonymous_usage_data(ipSets) {
     if (process.env.SEND_ANONYMOUS_USAGE_DATA.toLowerCase() !== "yes") {
         return 'Data sent';
     }
@@ -426,5 +426,5 @@ exports.handler = async (event) => {
         });
     }
 
-    await send_anonymous_usage_data(event, ipSets);
+    await send_anonymous_usage_data(ipSets);
 };
