@@ -35,7 +35,7 @@ BATCH_DELETE_LIMIT = 500
 DELAY_BETWEEN_DELETES = 2
 RULE_SUFIX_RATE_BASED = "-HTTP Flood Rule"
 
-waf_client = boto3.client(environ['API_TYPE'], config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+waf_client = boto3.client('wafv2', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
 
 #======================================================================================================================
 # Configure Access Log Bucket
@@ -158,238 +158,6 @@ def remove_s3_bucket_lambda_event(bucket_name, lambda_function_arn):
 
         logging.getLogger().debug("[remove_s3_bucket_lambda_event] End")
 
-
-#======================================================================================================================
-# Configure Rate Based Rule
-#======================================================================================================================
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def create_rate_based_rule(stack_name, request_threshold, metric_name_prefix):
-    logging.getLogger().debug("[create_rate_based_rule] Start")
-
-    rule_id = ""
-
-    response = waf_client.create_rate_based_rule(
-        Name = stack_name + RULE_SUFIX_RATE_BASED,
-        MetricName = metric_name_prefix + 'HttpFloodRule',
-        RateKey='IP',
-        RateLimit=int(request_threshold.replace(",","")),
-        ChangeToken=waf_client.get_change_token()['ChangeToken']
-    )
-    rule_id = response['Rule']['RuleId'].strip()
-
-    logging.getLogger().debug("[create_rate_based_rule] End")
-    return rule_id
-
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def update_rate_based_rule(rule_id, request_threshold):
-    logging.getLogger().debug("[update_rate_based_rule] Start")
-
-    try:
-        waf_client.update_rate_based_rule(
-            RuleId=rule_id,
-            Updates=[],
-            RateLimit=int(request_threshold.replace(",","")),
-            ChangeToken=waf_client.get_change_token()['ChangeToken']
-        )
-
-    except waf_client.exceptions.WAFNonexistentItemException:
-        raise Exception("Rate based rule %s doesn't exist (already deleted or failed to create)"%rule_id)
-
-    logging.getLogger().debug("[update_rate_based_rule] End")
-
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def delete_rate_based_rule(rule_id):
-    logging.getLogger().debug("[delete_rate_based_rule] Start")
-
-    try:
-        waf_client.delete_rate_based_rule(
-            RuleId=rule_id,
-            ChangeToken=waf_client.get_change_token()['ChangeToken']
-        )
-
-    except waf_client.exceptions.WAFNonexistentItemException:
-        logging.getLogger().debug("[delete_rate_based_rule] Rate based rule %s doesn't exist (already deleted or failed to create)"%rule_id)
-
-    logging.getLogger().debug("[delete_rate_based_rule] End")
-
-
-#======================================================================================================================
-# Configure Web ACl
-#======================================================================================================================
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def update_web_acl(web_acl_id, updates):
-    logging.getLogger().debug("[update_web_acl] Start")
-
-    if len(updates) > 0:
-        waf_client.update_web_acl(
-            WebACLId = web_acl_id,
-            ChangeToken = waf_client.get_change_token()['ChangeToken'],
-            Updates = updates
-        )
-
-    logging.getLogger().debug("[update_web_acl] End")
-
-def process_rule_inclusion(priority, action, rule_type, protection_tag_name, rule_name, resource_properties, current_rules):
-    update = None
-    is_activated = True if (protection_tag_name == None or resource_properties[protection_tag_name] == "yes") else False
-    rule_id = resource_properties[rule_name] if rule_name in resource_properties else None
-
-    if is_activated and rule_id not in current_rules:
-        update = {
-            'Action': 'INSERT',
-            'ActivatedRule': {
-                'Priority': priority,
-                'RuleId': rule_id,
-                'Action': {'Type': action},
-                'Type': rule_type
-            }
-        }
-    return update
-
-def process_rule_exclusion(protection_tag_name, rule_name, resource_properties, old_resource_properties, current_rules):
-    update = None
-    rule_id = old_resource_properties[rule_name] if rule_name in old_resource_properties else None
-    rule_data = current_rules[rule_id] if rule_id in current_rules else None
-    is_activated = resource_properties[protection_tag_name] == "yes"
-    was_activated = old_resource_properties[protection_tag_name] == "yes"
-
-    if was_activated and (not is_activated) and rule_id in current_rules:
-        update = {
-            'Action': 'DELETE',
-            'ActivatedRule': {
-                'Priority': rule_data['Priority'],
-                'RuleId': rule_id,
-                'Action': rule_data['Action'],
-                'Type': rule_data['Type']
-            }
-        }
-
-    return update
-
-def configure_web_acl(resource_properties, old_resource_properties):
-    logging.getLogger().debug("[configure_web_acl] Start")
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Get Current Rule List
-    #------------------------------------------------------------------------------------------------------------------
-    current_rules = {}
-    response = waf_client.get_web_acl(WebACLId=resource_properties['WAFWebACL'])
-    for rule in response['WebACL']['Rules']:
-        current_rules[rule['RuleId']] = {
-            'Type': rule['Type'],
-            'Priority': rule['Priority'],
-            'Action': rule['Action'],
-        }
-
-    #------------------------------------------------------------------------------------------------------------------
-    # For each protection, check if the rule needs to added to the web_acl
-    #------------------------------------------------------------------------------------------------------------------
-    updates = []
-    updates.append(process_rule_inclusion(10, resource_properties['ActionWAFWhitelistRule'], 'REGULAR', None, 'WAFWhitelistRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(20, resource_properties['ActionWAFBlacklistRule'], 'REGULAR', None, 'WAFBlacklistRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(30, resource_properties['ActionWAFSqlInjectionRule'], 'REGULAR', 'ProtectionActivatedSqlInjection', 'WAFSqlInjectionRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(40, resource_properties['ActionWAFXssRule'], 'REGULAR', 'ProtectionActivatedCrossSiteScripting', 'WAFXssRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(50, resource_properties['ActionWAFHttpFloodRateBasedRule'], 'RATE_BASED', 'ProtectionActivatedHttpFloodRateBased', 'WAFHttpFloodRateBasedRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(55, resource_properties['ActionWAFHttpFloodRegularRule'], 'REGULAR', 'ProtectionActivatedHttpFloodRegular', 'WAFHttpFloodRegularRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(60, resource_properties['ActionWAFScannersProbesRule'], 'REGULAR', 'ProtectionActivatedScannersProbes', 'WAFScannersProbesRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(70, resource_properties['ActionWAFIPReputationListsRule'], 'REGULAR', 'ProtectionActivatedReputationLists', 'WAFIPReputationListsRule', resource_properties, current_rules))
-    updates.append(process_rule_inclusion(90, resource_properties['ActionWAFBadBotRule'], 'REGULAR', 'ProtectionActivatedBadBot', 'WAFBadBotRule', resource_properties, current_rules))
-
-    if old_resource_properties:
-        updates.append(process_rule_exclusion('ProtectionActivatedSqlInjection', 'WAFSqlInjectionRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedCrossSiteScripting', 'WAFXssRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedHttpFloodRateBased', 'WAFHttpFloodRateBasedRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedHttpFloodRegular', 'WAFHttpFloodRegularRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedScannersProbes', 'WAFScannersProbesRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedReputationLists', 'WAFIPReputationListsRule', resource_properties, old_resource_properties, current_rules))
-        updates.append(process_rule_exclusion('ProtectionActivatedBadBot', 'WAFBadBotRule', resource_properties, old_resource_properties, current_rules))
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Clean invalid update elements
-    #------------------------------------------------------------------------------------------------------------------
-    updates = [u for u in updates if u is not None]
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Clean IP sets before delete them
-    #------------------------------------------------------------------------------------------------------------------
-    if old_resource_properties:
-        rule_ids = [u['ActivatedRule']['RuleId'] for u in updates if u['Action'] == 'DELETE']
-        if ('WAFScannersProbesRule' in old_resource_properties and old_resource_properties['WAFScannersProbesRule'] in rule_ids):
-            clean_ip_set(old_resource_properties['WAFScannersProbesSet'])
-        if ('WAFIPReputationListsRule' in old_resource_properties and old_resource_properties['WAFIPReputationListsRule'] in rule_ids):
-            clean_ip_set(old_resource_properties['WAFReputationListsSet'])
-        if ('WAFBadBotRule' in old_resource_properties and old_resource_properties['WAFBadBotRule'] in rule_ids):
-            clean_ip_set(old_resource_properties['WAFBadBotSet'])
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Update WebACL
-    #------------------------------------------------------------------------------------------------------------------
-    update_web_acl(resource_properties['WAFWebACL'], updates)
-
-    logging.getLogger().debug("[configure_web_acl] End")
-
-def clean_web_acl(web_acl_id):
-    logging.getLogger().debug("[clean_web_acl] Start")
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Get current rule list to be removed from the web ACL
-    #------------------------------------------------------------------------------------------------------------------
-    updates = []
-    response = waf_client.get_web_acl(WebACLId=web_acl_id)
-    for rule in response['WebACL']['Rules']:
-        updates.append({
-            'Action': 'DELETE',
-            'ActivatedRule': {
-                'Priority': rule['Priority'],
-                'RuleId': rule['RuleId'],
-                'Action': rule['Action'],
-                'Type': rule['Type']
-            }
-        })
-
-    #------------------------------------------------------------------------------------------------------------------
-    # Update WebACL
-    #------------------------------------------------------------------------------------------------------------------
-    update_web_acl(web_acl_id, updates)
-
-    logging.getLogger().debug("[clean_web_acl] End")
-
-@on_exception(expo, waf_client.exceptions.WAFStaleDataException, max_time=10)
-def waf_update_ip_set(ip_set_id, updates):
-    logging.getLogger().debug('[waf_update_ip_set] Start')
-    response = waf_client.update_ip_set(IPSetId=ip_set_id,
-        ChangeToken=waf_client.get_change_token()['ChangeToken'],
-        Updates=updates)
-    logging.getLogger().debug('[waf_update_ip_set] End')
-    return response
-
-def clean_ip_set(ip_set_id):
-    logging.getLogger().debug("[clean_ip_set] Clean IP Set %s"%ip_set_id)
-
-    response = waf_client.get_ip_set(IPSetId=ip_set_id)
-    while len(response['IPSet']['IPSetDescriptors']) > 0:
-        counter = 0
-        updates = []
-        for ip in response['IPSet']['IPSetDescriptors']:
-            updates.append({
-                'Action': 'DELETE',
-                'IPSetDescriptor': {
-                    'Type': ip['Type'],
-                    'Value': ip['Value']
-                }
-            })
-            counter += 1
-            if counter >= BATCH_DELETE_LIMIT:
-                break
-
-        logging.getLogger().debug("[clean_ip_set] Deleting %d IPs..."%len(updates))
-        waf_update_ip_set(ip_set_id, updates)
-        response = waf_client.get_ip_set(IPSetId=ip_set_id)
-        if len(response['IPSet']['IPSetDescriptors']) > 0:
-            logging.getLogger().debug('[clean_ip_set] Sleep %d sec befone next slot to avoid AWS WAF API throttling ...'%DELAY_BETWEEN_DELETES)
-            time.sleep(DELAY_BETWEEN_DELETES)
-
-
 #======================================================================================================================
 # Configure AWS WAF Logs
 #======================================================================================================================
@@ -438,12 +206,10 @@ def populate_reputation_list(region, reputation_lists_parser_function, reputatio
                         "url": "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt"
                     }
                   ],
-                  "apiType":"%s",
-                  "region":"%s",
-                  "ipSetIds": [
+                  "ipSetRefs": [
                         "%s"
                   ]
-                }"""%(environ['API_TYPE'], region, reputation_list_set)
+                }"""%(reputation_list_set)
         )
 
     except Exception as error:
@@ -715,41 +481,6 @@ def lambda_handler(event, context):
             elif 'DELETE' in request_type:
                 remove_s3_bucket_lambda_event(event['ResourceProperties']["WafLogBucket"],
                     lambda_log_parser_function)
-
-        elif event['ResourceType'] == "Custom::ConfigureRateBasedRule":
-            if 'CREATE' in request_type:
-                rbr_id = create_rate_based_rule(event['ResourceProperties']['StackName'], event['ResourceProperties']['RequestThreshold'], event['ResourceProperties']['MetricNamePrefix'])
-                if (rbr_id != ""):
-                    resourceId = rbr_id
-                    responseData['RateBasedRuleId'] = rbr_id
-
-            elif 'UPDATE' in request_type:
-                responseData['RateBasedRuleId'] = event['PhysicalResourceId']
-                if (event['OldResourceProperties']['RequestThreshold'] != event['ResourceProperties']['RequestThreshold']):
-                    update_rate_based_rule(event['PhysicalResourceId'], event['ResourceProperties']['RequestThreshold'])
-
-            elif 'DELETE' in request_type:
-                delete_rate_based_rule(event['PhysicalResourceId'])
-
-        elif event['ResourceType'] == "Custom::ConfigureWebAcl":
-            if 'CREATE' in request_type:
-                configure_web_acl(event['ResourceProperties'], None)
-
-            elif 'UPDATE' in request_type:
-                configure_web_acl(event['ResourceProperties'], event['OldResourceProperties'])
-
-            elif 'DELETE' in request_type:
-                clean_web_acl(event['ResourceProperties']['WAFWebACL'])
-                clean_ip_set(event['ResourceProperties']['WAFWhitelistSet'])
-                clean_ip_set(event['ResourceProperties']['WAFBlacklistSet'])
-                if 'WAFScannersProbesSet' in event['ResourceProperties']:
-                    clean_ip_set(event['ResourceProperties']['WAFScannersProbesSet'])
-                if 'WAFReputationListsSet' in event['ResourceProperties']:
-                    clean_ip_set(event['ResourceProperties']['WAFReputationListsSet'])
-                if 'WAFBadBotSet' in event['ResourceProperties']:
-                    clean_ip_set(event['ResourceProperties']['WAFBadBotSet'])
-
-            send_anonymous_usage_data(event['RequestType'], event['ResourceProperties'])
 
         elif event['ResourceType'] == "Custom::PopulateReputationList":
             if 'CREATE' in request_type or 'UPDATE' in request_type:

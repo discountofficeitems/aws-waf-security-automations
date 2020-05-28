@@ -40,7 +40,7 @@ git clone https://github.com/awslabs/aws-waf-security-automations.git
 ```
 export TEMPLATE_OUTPUT_BUCKET=<YOUR_TEMPLATE_OUTPUT_BUCKET>
 export DIST_OUTPUT_BUCKET=<YOUR_DIST_OUTPUT_BUCKET>
-export SOLUTION_NAME="workspaces-cost-optimizer"
+export SOLUTION_NAME="aws-waf-security-automations"
 export VERSION=<VERSION>
 export AWS_REGION=<AWS_REGION>
 ```

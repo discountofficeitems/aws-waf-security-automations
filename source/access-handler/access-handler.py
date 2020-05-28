@@ -30,43 +30,55 @@ logging.getLogger().debug('Loading function')
 #======================================================================================================================
 API_CALL_NUM_RETRIES = 5
 
-waf = None
-if environ['LOG_TYPE'] == 'alb':
-    session = boto3.session.Session(region_name=environ['REGION'])
-    waf = session.client('waf-regional', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
-else:
-    waf = boto3.client('waf', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
+waf = boto3.client('wafv2', config=Config(retries={'max_attempts': API_CALL_NUM_RETRIES}))
 
 #======================================================================================================================
 # Auxiliary Functions
 #======================================================================================================================
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
-def waf_update_ip_set(ip_set_id, source_ip):
+@on_exception(expo, waf.exceptions.WAFOptimisticLockException, max_time=10)
+def waf_update_ip_set(ip_set_ref, source_ip):
     logging.getLogger().debug('[waf_update_ip_set] Start')
+    ip_set = waf_get_ip_set(ip_set_ref)
 
     ip_type = "IPV%s"%ip_address(source_ip).version
+
+    if ip_type != ip_set['IPSet']['IPAddressVersion']:
+        logging.getLogger().debug('[waf_update_ip_set] End. Address is not a matching IP version.')
+        return len(ip_set['IPSet']['Addresses'])
+
     ip_class = "32" if ip_type == "IPV4" else "128"
-    waf.update_ip_set(IPSetId=ip_set_id,
-        ChangeToken=waf.get_change_token()['ChangeToken'],
-        Updates=[{
-            'Action': 'INSERT',
-            'IPSetDescriptor': {
-                'Type': ip_type,
-                'Value': "%s/%s"%(source_ip, ip_class)
-            }
-        }]
+    cidr = "%s/%s"%(source_ip, ip_class)
+    if cidr in ip_set['IPSet']['Addresses']:
+        logging.getLogger().debug('[waf_update_ip_set] End. Address already in list.')
+        return len(ip_set['IPSet']['Addresses'])
+
+    ip_set['IPSet']['Addresses'].append(cidr)
+
+    waf.update_ip_set(Id=ip_set['IPSet']['Id'],
+        Name=ip_set['IPSet']['Name'],
+        Scope=ip_set['IPSet']['Scope'],
+        LockToken=ip_set['LockToken'],
+        Addresses=ip_set['IPSet']['Addresses']
     )
 
     logging.getLogger().debug('[waf_update_ip_set] End')
 
-@on_exception(expo, waf.exceptions.WAFStaleDataException, max_time=10)
-def waf_get_ip_set(ip_set_id):
+    return len(ip_set['IPSet']['Addresses'])
+
+def waf_get_ip_set(ip_set_ref):
     logging.getLogger().debug('[waf_get_ip_set] Start')
-    response = waf.get_ip_set(IPSetId=ip_set_id)
+    ref_parts = ip_set_ref.split('|')
+    response = waf.get_ip_set(
+        Name=ref_parts[0],
+        Id=ref_parts[1],
+        Scope=ref_parts[2]
+    )
+    if 'IPSet' in response and not 'Scope' in response['IPSet']:
+        response['IPSet']['Scope'] = ref_parts[2]
     logging.getLogger().debug('[waf_get_ip_set] End')
     return response
 
-def send_anonymous_usage_data():
+def send_anonymous_usage_data(bad_bot_list_size):
     try:
         if 'SEND_ANONYMOUS_USAGE_DATA' not in environ or environ['SEND_ANONYMOUS_USAGE_DATA'].lower() != 'yes':
             return
@@ -150,9 +162,7 @@ def send_anonymous_usage_data():
         #--------------------------------------------------------------------------------------------------------------
         if 'IP_SET_ID_BAD_BOT' in environ:
             try:
-                response = waf_get_ip_set(environ['IP_SET_ID_BAD_BOT'])
-                if response != None:
-                    usage_data['Data']['bad_bot_ip_set_size'] = len(response['IPSet']['IPSetDescriptors'])
+                usage_data['Data']['bad_bot_ip_set_size'] = bad_bot_list_size
 
                 response = cw.get_metric_statistics(
                     MetricName='BlockedRequests',
@@ -220,13 +230,13 @@ def lambda_handler(event, context):
         logging.getLogger().info(event)
         source_ip = event['headers']['X-Forwarded-For'].split(',')[0].strip()
 
-        waf_update_ip_set(environ['IP_SET_ID_BAD_BOT'], source_ip)
+        bad_bot_list_size = waf_update_ip_set(environ['IP_SET_ID_BAD_BOT'], source_ip)
 
         message = {}
         message['message'] = "[%s] Thanks for the visit."%source_ip
         response['body'] = json.dumps(message)
 
-        send_anonymous_usage_data()
+        send_anonymous_usage_data(bad_bot_list_size)
 
     except Exception as error:
         logging.getLogger().error(str(error))
