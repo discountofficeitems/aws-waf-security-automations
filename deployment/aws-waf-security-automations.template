@@ -815,6 +815,12 @@ Outputs:
     Export:
         Name: !Sub '${AWS::StackName}-WAFWebACL'
 
+  WAFWebACLArn:
+    Description: AWS WAF WebACL ARN
+    Value: !GetAtt WafStack.Outputs.WAFWebACLArn
+    Export:
+        Name: !Sub '${AWS::StackName}-WAFWebACLArn'
+
   WafLogBucket:
     Value: !Ref WafLogBucket
     Condition: HttpFloodProtectionLogParserActivated
